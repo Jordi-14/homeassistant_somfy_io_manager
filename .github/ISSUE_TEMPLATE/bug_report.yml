@@ -1,0 +1,51 @@
+name: Bug report
+description: Report a reproducible integration problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Remove all credentials, controller keys, recovery blobs, remote IDs,
+        and private network details before submitting.
+  - type: input
+    id: home_assistant
+    attributes:
+      label: Home Assistant version
+    validations:
+      required: true
+  - type: input
+    id: integration
+    attributes:
+      label: Integration version
+    validations:
+      required: true
+  - type: input
+    id: esphome
+    attributes:
+      label: ESPHome version
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: ESP32 and radio hardware
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs
+      render: text

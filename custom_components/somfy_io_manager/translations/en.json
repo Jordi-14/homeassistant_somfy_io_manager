@@ -1,0 +1,155 @@
+{
+  "title": "Somfy IO Shutter Manager",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select a Somfy IO radio bridge",
+        "description": "Choose an ESPHome bridge running the GUI commissioning firmware.",
+        "data": {
+          "bridge": "ESPHome bridge"
+        }
+      }
+    },
+    "error": {
+      "bridge_unavailable": "That bridge is no longer available."
+    },
+    "abort": {
+      "already_configured": "This bridge is already configured.",
+      "no_compatible_bridges": "No compatible online ESPHome bridge was found. Flash the manager firmware first and wait for its entities to appear."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Manage Somfy IO shutters",
+        "menu_options": {
+          "add_shutter": "Pair a new shutter",
+          "import_existing": "Import an already-paired slot",
+          "edit_calibration": "Edit shutter calibration",
+          "move_shutter": "Move a shutter to another slot",
+          "swap_shutters": "Swap two shutter slots",
+          "resume_attempt": "Resume or safely discard an unfinished attempt"
+        }
+      },
+      "add_shutter": {
+        "title": "New independently controlled shutter",
+        "description": "Choose the initial firmware slot, shutter name, area, and time-based position calibration. The slot can be changed later. A new controller identity and AES key are generated securely inside the ESP; they are never shown in the UI.",
+        "data": {
+          "slot": "Initial firmware slot number",
+          "name": "Shutter name",
+          "area_id": "Area",
+          "open_seconds": "Full opening time",
+          "close_seconds": "Full closing time",
+          "my_percent": "MY position"
+        }
+      },
+      "capture_remote": {
+        "title": "Capture the shutter's existing remote",
+        "description": "Slot {slot} is listening for 30 seconds. Briefly press OPEN or CLOSE once on the physical remote that already controls this shutter. Do not press PROG yet. Then tick the box and submit.",
+        "data": {
+          "remote_pressed": "I pressed OPEN or CLOSE"
+        }
+      },
+      "prepare_pairing": {
+        "title": "Put only this shutter into programming mode",
+        "description": "On the captured physical remote ({remote}), select only **{name}**. Hold its recessed PROG button until that shutter performs one short jog. Do not continue if another shutter jogs. The next submit sends the new controller's pairing frame exactly once.",
+        "data": {
+          "program_jogged": "The intended shutter jogged after holding PROG"
+        }
+      },
+      "confirm_pairing": {
+        "title": "Confirm the pairing jog",
+        "description": "Did **{name}** perform a second short jog immediately after the previous submit? If unsure, answer no. The controller identity will be preserved and the wizard will not blindly retransmit it.",
+        "data": {
+          "pairing_jogged": "Yes, the intended shutter performed the second jog"
+        }
+      },
+      "import_existing": {
+        "title": "Import an already-paired firmware slot",
+        "description": "Use this for a controller identity already imported by ESPHome YAML, such as the existing kitchen shutter. Choose its current slot and where you want it now; that destination can be changed later. Moving it preserves the same identity and rolling-code stream and transmits no RF. GUI slot numbers start at 1.",
+        "data": {
+          "slot": "Current firmware slot number",
+          "target_slot": "Destination firmware slot number",
+          "name": "Shutter name",
+          "area_id": "Area",
+          "open_seconds": "Full opening time",
+          "close_seconds": "Full closing time",
+          "my_percent": "MY position"
+        }
+      },
+      "resume_attempt": {
+        "title": "Unfinished commissioning attempt",
+        "description": "A staged identity may be discarded only before any pairing RF was sent. After a pairing transmission it is retained to avoid consuming another receiver slot or losing a possibly paired controller.",
+        "data": {
+          "attempt": "Attempt",
+          "resume_action": "Action"
+        }
+      },
+      "edit_calibration": {
+        "title": "Choose a shutter",
+        "data": {
+          "slot": "Shutter"
+        }
+      },
+      "move_shutter": {
+        "title": "Move a shutter to another firmware slot",
+        "description": "This changes only the ESP's internal organization. The controller identity, AES key, rolling-code stream, calibration, and motor pairing stay with the shutter. No RF is transmitted.",
+        "data": {
+          "slot": "Shutter",
+          "target_slot": "Destination firmware slot number"
+        }
+      },
+      "swap_shutters": {
+        "title": "Swap two shutter slots",
+        "description": "Choose two managed shutters to exchange their firmware slots. Both controller identities, rolling-code streams, calibrations, backups, and motor pairings stay with their shutters. No RF is transmitted and no empty slot is required.",
+        "data": {
+          "slot": "First shutter",
+          "target_slot": "Second shutter"
+        }
+      },
+      "calibration_values": {
+        "title": "Position calibration",
+        "description": "Enter measured end-to-end movement times. MY is the approximate cover percentage used by Home Assistant's position model; the radio still recalls the motor's native stored favourite.",
+        "data": {
+          "open_seconds": "Full opening time",
+          "close_seconds": "Full closing time",
+          "my_percent": "MY position"
+        }
+      },
+      "finish_setup": {
+        "title": "Finish shutter setup",
+        "description": "The shutter identity is already safe in the ESP. Retry the final calibration and backup step; no pairing frame will be retransmitted.",
+        "data": {
+          "retry_setup": "Retry final setup"
+        }
+      }
+    },
+    "error": {
+      "invalid_name": "Enter a shutter name.",
+      "slot_entity_missing": "The generated ESPHome cover for this slot has not appeared yet. Wait for the bridge to reconnect, then submit again.",
+      "manager_unavailable": "The ESPHome commissioning manager did not respond. Check that the bridge is online and its custom actions are enabled.",
+      "press_remote_first": "Press OPEN or CLOSE on the physical remote before continuing.",
+      "remote_not_detected": "No matching remote press was captured. Listening has restarted for another 30 seconds.",
+      "program_jog_required": "Confirm the first programming jog before a pairing frame can be sent.",
+      "slot_not_active": "That firmware slot does not contain a confirmed active controller.",
+      "cannot_discard_after_pairing": "This identity cannot be discarded because a pairing frame may already have reached the shutter.",
+      "attempt_not_resumable": "The firmware slot is not in a resumable state.",
+      "same_slot": "Choose a different destination slot.",
+      "target_slot_not_empty": "The destination firmware slot is already occupied. Use Swap two shutter slots when both slots contain managed shutters.",
+      "both_slots_must_be_active": "Both firmware slots must contain confirmed active shutters."
+    },
+    "abort": {
+      "no_pending_attempts": "There are no unfinished attempts.",
+      "no_managed_shutters": "No shutters have been added to this bridge.",
+      "not_enough_managed_shutters": "At least two managed shutters are required for a slot swap."
+    }
+  },
+  "selector": {
+    "resume_action": {
+      "options": {
+        "continue": "Continue safely",
+        "discard": "Discard (only before pairing RF)"
+      }
+    }
+  }
+}

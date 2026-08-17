@@ -1,0 +1,87 @@
+substitutions:
+  device_name: somfy-io-control
+  friendly_name: Somfy IO Control
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  min_version: 2026.7.0
+
+esp32:
+  board: seeed_xiao_esp32s3
+  framework:
+    type: arduino
+
+logger:
+
+api:
+  custom_services: true
+  encryption:
+    key: !secret somfy_io_api_key
+
+ota:
+  - platform: esphome
+    password: !secret somfy_io_ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: !secret somfy_io_fallback_password
+
+captive_portal:
+
+safe_mode:
+
+external_components:
+  - source: github://Jordi-14/esphome_somfy@iohc-hardware-control
+    components: [somfy, somfy_iohc_manager]
+
+spi:
+  clk_pin: GPIO07
+  mosi_pin: GPIO09
+  miso_pin: GPIO08
+
+cc1101:
+  id: iohc_cc1101
+  cs_pin: GPIO04
+  gdo0_pin: GPIO02
+  frequency: 868.95MHz
+  modulation_type: 2-FSK
+  symbol_rate: 38400
+  fsk_deviation: 19.2kHz
+  filter_bandwidth: 100kHz
+  output_power: 10
+  manchester: false
+  packet_mode: true
+  packet_length: 0
+  crc_enable: false
+  sync_mode: "16/16"
+  sync1: 0x57
+  sync0: 0xFD
+  num_preamble: 7
+
+somfy:
+  - id: iohc_radio
+    type: iohc
+    cc1101_id: iohc_cc1101
+
+text_sensor:
+  - platform: template
+    id: somfy_commissioning_status
+    name: "Commissioning Status"
+    entity_category: diagnostic
+
+  - platform: template
+    id: somfy_encrypted_controller_backup
+    name: "Encrypted Controller Backup"
+    entity_category: diagnostic
+
+somfy_iohc_manager:
+  id: shutter_manager
+  somfy_id: iohc_radio
+  status_sensor: somfy_commissioning_status
+  backup_sensor: somfy_encrypted_controller_backup
+  backup_key: !secret somfy_io_backup_key
+  max_shutters: 20

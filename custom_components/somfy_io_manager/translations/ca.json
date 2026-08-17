@@ -1,0 +1,138 @@
+{
+  "title": "Gestor de persianes Somfy IO",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Selecciona un pont de ràdio Somfy IO",
+        "description": "Tria un pont ESPHome amb el firmware de configuració gràfica.",
+        "data": { "bridge": "Pont ESPHome" }
+      }
+    },
+    "error": { "bridge_unavailable": "Aquest pont ja no està disponible." },
+    "abort": {
+      "already_configured": "Aquest pont ja està configurat.",
+      "no_compatible_bridges": "No s'ha trobat cap pont ESPHome compatible i en línia. Primer instal·la el firmware del gestor i espera que apareguin les entitats."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Gestiona les persianes Somfy IO",
+        "menu_options": {
+          "add_shutter": "Vincula una persiana nova",
+          "import_existing": "Importa una ranura ja vinculada",
+          "edit_calibration": "Edita el calibratge",
+          "move_shutter": "Canvia una persiana de ranura",
+          "swap_shutters": "Intercanvia les ranures de dues persianes",
+          "resume_attempt": "Reprèn o descarta de manera segura un intent inacabat"
+        }
+      },
+      "add_shutter": {
+        "title": "Persiana nova amb control independent",
+        "description": "Tria la ranura inicial del firmware, el nom de la persiana, l'àrea i el calibratge de posició. La ranura es pot canviar més endavant. L'ESP genera de manera segura un identificador de controlador i una clau AES nous; no es mostren a la interfície.",
+        "data": {
+          "slot": "Número de ranura inicial del firmware",
+          "name": "Nom de la persiana",
+          "area_id": "Àrea",
+          "open_seconds": "Temps d'obertura completa",
+          "close_seconds": "Temps de tancament complet",
+          "my_percent": "Posició MY"
+        }
+      },
+      "capture_remote": {
+        "title": "Captura el comandament existent",
+        "description": "La ranura {slot} escolta durant 30 segons. Prem breument OBRIR o TANCAR una vegada al comandament físic que ja controla aquesta persiana. Encara no premis PROG. Després marca la casella i continua.",
+        "data": { "remote_pressed": "He premut OBRIR o TANCAR" }
+      },
+      "prepare_pairing": {
+        "title": "Posa només aquesta persiana en mode de programació",
+        "description": "Al comandament capturat ({remote}), selecciona només **{name}**. Mantén premut el botó PROG encastat fins que aquesta persiana faci un moviment curt. No continuïs si es mou una altra persiana. En continuar s'enviarà exactament una trama de vinculació.",
+        "data": { "program_jogged": "La persiana correcta s'ha mogut després de mantenir PROG" }
+      },
+      "confirm_pairing": {
+        "title": "Confirma el segon moviment",
+        "description": "**{name}** ha fet un segon moviment curt just després del pas anterior? Si no n'estàs segur, respon que no. Es conservarà la identitat i no es retransmetrà a cegues.",
+        "data": { "pairing_jogged": "Sí, la persiana correcta ha fet el segon moviment" }
+      },
+      "import_existing": {
+        "title": "Importa una ranura del firmware ja vinculada",
+        "description": "Utilitza-ho per a una identitat ja importada des del YAML d'ESPHome, com la persiana actual de la cuina. Tria'n la ranura actual i on la vols ara; aquesta destinació es pot canviar més endavant. El trasllat conserva la mateixa identitat i el mateix codi rodant, i no transmet cap trama de ràdio. Les ranures de la interfície comencen per 1.",
+        "data": {
+          "slot": "Número de ranura actual del firmware",
+          "target_slot": "Número de ranura de destinació del firmware",
+          "name": "Nom de la persiana",
+          "area_id": "Àrea",
+          "open_seconds": "Temps d'obertura completa",
+          "close_seconds": "Temps de tancament complet",
+          "my_percent": "Posició MY"
+        }
+      },
+      "resume_attempt": {
+        "title": "Intent de configuració inacabat",
+        "description": "Una identitat preparada només es pot descartar abans d'enviar ràdio de vinculació. Després es conserva per no consumir una altra ranura del receptor ni perdre un controlador possiblement vinculat.",
+        "data": { "attempt": "Intent", "resume_action": "Acció" }
+      },
+      "edit_calibration": {
+        "title": "Tria una persiana",
+        "data": { "slot": "Persiana" }
+      },
+      "move_shutter": {
+        "title": "Mou una persiana a una altra ranura del firmware",
+        "description": "Només canvia l'organització interna de l'ESP. La identitat del controlador, la clau AES, el codi rodant, el calibratge i la vinculació amb el motor continuen amb la persiana. No es transmet cap trama de ràdio.",
+        "data": {
+          "slot": "Persiana",
+          "target_slot": "Número de ranura de destinació del firmware"
+        }
+      },
+      "swap_shutters": {
+        "title": "Intercanvia dues ranures de persiana",
+        "description": "Tria dues persianes gestionades per intercanviar-ne les ranures del firmware. Les identitats dels controladors, els codis rodants, els calibratges, les còpies de seguretat i les vinculacions continuen amb les seves persianes. No s'emet cap trama de ràdio i no cal cap ranura buida.",
+        "data": {
+          "slot": "Primera persiana",
+          "target_slot": "Segona persiana"
+        }
+      },
+      "calibration_values": {
+        "title": "Calibratge de posició",
+        "description": "Introdueix els temps mesurats entre finals de cursa. MY és el percentatge aproximat del model de Home Assistant; la ràdio continua recuperant el favorit natiu del motor.",
+        "data": {
+          "open_seconds": "Temps d'obertura completa",
+          "close_seconds": "Temps de tancament complet",
+          "my_percent": "Posició MY"
+        }
+      },
+      "finish_setup": {
+        "title": "Acaba la configuració de la persiana",
+        "description": "La identitat de la persiana ja és segura a l'ESP. Torna a provar el calibratge i la còpia de seguretat finals; no es retransmetrà la vinculació.",
+        "data": { "retry_setup": "Torna a provar la configuració final" }
+      }
+    },
+    "error": {
+      "invalid_name": "Introdueix un nom de persiana.",
+      "slot_entity_missing": "Encara no ha aparegut l'entitat ESPHome d'aquesta ranura. Espera que el pont es reconnecti i torna-ho a provar.",
+      "manager_unavailable": "El gestor ESPHome no ha respost. Comprova que el pont estigui en línia i que tingui activades les accions personalitzades.",
+      "press_remote_first": "Prem OBRIR o TANCAR al comandament físic abans de continuar.",
+      "remote_not_detected": "No s'ha capturat cap pulsació coincident. L'escolta s'ha reiniciat durant 30 segons.",
+      "program_jog_required": "Confirma el primer moviment de programació abans d'enviar la vinculació.",
+      "slot_not_active": "Aquesta ranura no conté cap controlador actiu confirmat.",
+      "cannot_discard_after_pairing": "Aquesta identitat no es pot descartar perquè la trama de vinculació podria haver arribat a la persiana.",
+      "attempt_not_resumable": "La ranura del firmware no es troba en un estat recuperable.",
+      "same_slot": "Tria una ranura de destinació diferent.",
+      "target_slot_not_empty": "La ranura de destinació del firmware ja està ocupada. Fes servir Intercanvia dues ranures de persiana quan totes dues continguin persianes gestionades.",
+      "both_slots_must_be_active": "Totes dues ranures del firmware han de contenir persianes actives confirmades."
+    },
+    "abort": {
+      "no_pending_attempts": "No hi ha intents inacabats.",
+      "no_managed_shutters": "Encara no s'ha afegit cap persiana a aquest pont.",
+      "not_enough_managed_shutters": "Calen almenys dues persianes gestionades per intercanviar ranures."
+    }
+  },
+  "selector": {
+    "resume_action": {
+      "options": {
+        "continue": "Continua de manera segura",
+        "discard": "Descarta (només abans d'enviar vinculació)"
+      }
+    }
+  }
+}
