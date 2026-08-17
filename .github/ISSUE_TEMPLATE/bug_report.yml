@@ -1,13 +1,28 @@
-name: Bug report
-description: Report a reproducible integration problem
-title: "[Bug]: "
-labels: [bug]
+name: Support / Bug
+description: Report a reproducible setup, commissioning, entity, or control problem
+title: "[Support/Bug]: "
+labels: ["bug"]
 body:
   - type: markdown
     attributes:
-      value: >-
-        Remove all credentials, controller keys, recovery blobs, remote IDs,
-        and private network details before submitting.
+      value: |
+        Remove all credentials, controller keys, recovery blobs, remote IDs, local addresses, and private network details before submitting.
+
+        Download diagnostics from **Settings → Devices & services → Somfy IO Shutter Manager → Download diagnostics**. The generated file intentionally omits radio identities and recovery payloads, but review it before posting.
+  - type: dropdown
+    id: issue_type
+    attributes:
+      label: What kind of issue is this?
+      options:
+        - Setup cannot find the ESPHome bridge
+        - Pairing or commissioning fails
+        - Open, close, stop, MY, or position control is wrong
+        - Physical-remote detection or synchronization is wrong
+        - Slot import, move, swap, calibration, or recovery fails
+        - HACS, upgrade, or duplicate-entity problem
+        - Other support request
+    validations:
+      required: true
   - type: input
     id: home_assistant
     attributes:
@@ -29,13 +44,16 @@ body:
   - type: input
     id: hardware
     attributes:
-      label: ESP32 and radio hardware
+      label: ESP32, radio module, and motor or shutter model
     validations:
       required: true
   - type: textarea
-    id: problem
+    id: expected_actual
     attributes:
-      label: What happened?
+      label: Expected and actual behaviour
+      placeholder: |
+        Expected: What should happen?
+        Actual: What happened instead?
     validations:
       required: true
   - type: textarea
@@ -45,7 +63,23 @@ body:
     validations:
       required: true
   - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Attach the Home Assistant diagnostics JSON after reviewing it.
+  - type: textarea
     id: logs
     attributes:
       label: Redacted logs
       render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I restarted Home Assistant after installing or updating the integration.
+          required: false
+        - label: I confirmed the ESPHome bridge is online in Home Assistant.
+          required: false
+        - label: I removed all keys, recovery blobs, remote identifiers, and network details.
+          required: true

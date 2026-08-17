@@ -1,5 +1,7 @@
 {
+  "filename": "somfy_io_manager.zip",
   "hide_default_branch": true,
   "homeassistant": "2026.7.0",
-  "name": "Somfy IO Shutter Manager"
+  "name": "Somfy IO Shutter Manager",
+  "zip_release": true
 }

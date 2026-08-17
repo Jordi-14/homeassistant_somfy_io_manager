@@ -1,50 +1,123 @@
-# Somfy IO Shutter Manager
+# Somfy IO Shutter Manager for Home Assistant
 
-An unofficial Home Assistant custom integration for independently controlling
-Somfy io-homecontrol 1W shutters through an ESP32 and a CC1101 radio.
+[![Validation](https://github.com/Jordi-14/homeassistant_somfy_io_manager/actions/workflows/validate.yml/badge.svg)](https://github.com/Jordi-14/homeassistant_somfy_io_manager/actions/workflows/validate.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/Jordi-14/homeassistant_somfy_io_manager)](https://github.com/Jordi-14/homeassistant_somfy_io_manager/releases/latest)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5?logo=homeassistant&logoColor=white)](https://www.home-assistant.io/)
+[![License](https://img.shields.io/github/license/Jordi-14/homeassistant_somfy_io_manager)](LICENSE)
 
-The integration adds a graphical commissioning and maintenance interface on
-top of the `somfy_iohc_manager` ESPHome component. Each shutter appears as its
-own Home Assistant device with:
+An unofficial Home Assistant integration for independent, local control of
+Somfy io-homecontrol 1W shutters through one or more ESP32 and CC1101 radio
+bridges.
 
-- an open, close, stop, and percentage-position cover;
-- a native MY/favourite-position button;
-- a friendly physical-remote event sensor;
-- independent opening time, closing time, and MY calibration;
-- its own controller identity, AES key, and rolling-code stream.
+The integration provides the graphical commissioning and maintenance layer for
+the `somfy_iohc_manager` ESPHome component. Each shutter is represented as its
+own Home Assistant device, while Wi-Fi, uptime, commissioning transport, and
+other bridge diagnostics remain on the ESPHome device.
 
-> This project is not affiliated with or endorsed by Somfy. io-homecontrol is a
-> registered trademark of its respective owner.
+This project is not affiliated with or endorsed by Somfy. io-homecontrol is a
+registered trademark of its respective owner.
 
-## Status
+## Status and compatibility
 
-The io-homecontrol **1W path is hardware validated**. This includes independent
-pairing, open, close, stop, native MY, intermediate positioning, physical-remote
-synchronisation, repeated-button logging, multiple slots, and reboot
-persistence. The bidirectional 2W path is not currently supported by this Home
-Assistant manager.
+The io-homecontrol **1W path is hardware validated**. Tests cover pairing,
+independent open/close/stop/MY control, intermediate positioning, repeated
+physical-remote events, slot management, encrypted recovery, and persistence
+after reboot.
 
-| Integration | Manager API | Tested Home Assistant | Tested ESPHome |
-|---|---:|---:|---:|
-| 0.6.x | 1 | 2026.7 | 2026.7.4 |
+The bidirectional 2W path is not currently supported by this manager.
+
+| Integration | Manager API | Home Assistant | ESPHome | Status |
+| --- | ---: | ---: | ---: | --- |
+| 0.6.x | 1 | 2026.7+ | 2026.7.4 tested | 1W hardware validated |
+
+Validated bridge hardware:
+
+- Seeed Studio XIAO ESP32-S3;
+- E07 900-series CC1101 module at the io-homecontrol frequency;
+- one or more Somfy/Nice io-homecontrol 1W shutters with an existing remote.
+
+Radio modules sold primarily for another band may sometimes tune to the target
+frequency, but sensitivity, filtering, output, and regulatory compliance can
+differ. Use a module intended for the local io-homecontrol band in a permanent
+installation.
+
+## Features
+
+- One Home Assistant device per physical shutter.
+- Native cover controls for open, close, stop, and estimated percentage.
+- Dedicated MY/favourite-position button.
+- Friendly physical-remote event sensor showing Open, Close, Stop/MY, or MY.
+- Physical-remote synchronization of the estimated cover state.
+- Independent opening time, closing time, and MY calibration per shutter.
+- Twenty persistent firmware slots per bridge.
+- Explicit slot selection when adding or importing a shutter.
+- Safe moves to empty slots and direct swaps between occupied slots.
+- Import of controller identities already paired through ESPHome YAML.
+- AES-GCM encrypted controller recovery snapshots retained in private Home
+  Assistant storage.
+- Resumable commissioning after Home Assistant or ESP restarts.
+- English and Catalan config flows.
+- Privacy-preserving downloadable diagnostics.
+- Support for multiple bridges when radio range requires them.
+
+## Architecture
+
+The project is deliberately split into two repositories:
+
+| Layer | Repository | Responsibility |
+| --- | --- | --- |
+| ESPHome | [`Jordi-14/esphome_somfy`](https://github.com/Jordi-14/esphome_somfy/tree/iohc-hardware-control) | Radio framing, receive/transmit, rolling codes, NVS identities, slot state, position timing, encrypted export, and manager API. |
+| Home Assistant | This repository | Config and options flows, per-shutter devices and entities, diagnostics, encrypted-snapshot retention, and safe slot workflows. |
+
+The firmware work is proposed upstream in
+[`leonardpitzu/esphome_somfy#9`](https://github.com/leonardpitzu/esphome_somfy/pull/9).
+HACS default-catalog inclusion is tracked in
+[`hacs/default#10085`](https://github.com/hacs/default/pull/10085).
 
 ## Requirements
 
 - Home Assistant 2026.7 or newer;
-- HACS;
-- an ESP32 running the compatible `somfy_iohc_manager` firmware;
-- a 868 MHz CC1101 module suitable for io-homecontrol;
-- at least one existing physical remote for commissioning each shutter.
+- HACS, or manual custom-component installation;
+- an ESP32 running the compatible manager firmware;
+- a CC1101 radio suitable for the local io-homecontrol frequency;
+- an existing physical remote for each shutter being commissioned;
+- physical access to the shutter during pairing and testing.
 
-The firmware component currently lives in the
-[`iohc-hardware-control`](https://github.com/Jordi-14/esphome_somfy/tree/iohc-hardware-control)
-branch of `Jordi-14/esphome_somfy`. It is being proposed to the upstream
-external-component project.
+Pairing creates an additional controller identity. Some motors have a limited
+controller table, and removing a controller may require a complete motor reset.
+Keep the original remote and motor instructions available.
 
-## Install the firmware
+## Installation
+
+### HACS
+
+Until the repository is merged into the default HACS catalogue:
+
+1. Open **HACS → Integrations**.
+2. Open the three-dot menu and choose **Custom repositories**.
+3. Add `https://github.com/Jordi-14/homeassistant_somfy_io_manager` as an
+   **Integration**.
+4. Search for **Somfy IO Shutter Manager** and select **Download**.
+5. Restart Home Assistant.
+
+After default-catalog inclusion, the custom repository step will no longer be
+needed.
+
+### Manual
+
+Copy this directory into the Home Assistant configuration folder:
+
+```text
+custom_components/somfy_io_manager
+```
+
+Restart Home Assistant after installing or updating it.
+
+## Firmware setup
 
 Start from [`examples/somfy-io-control.yaml`](examples/somfy-io-control.yaml)
-and create the corresponding secrets from
+and create the corresponding private values from
 [`examples/secrets.example.yaml`](examples/secrets.example.yaml).
 
 The essential manager configuration is:
@@ -77,72 +150,156 @@ somfy_iohc_manager:
 ```
 
 Generate a unique 16-byte backup key and store it as exactly 32 hexadecimal
-characters. Do not reuse a controller AES key.
+characters. Do not reuse a controller AES key, publish the backup key, or place
+it directly in a public YAML file.
 
-## Install through HACS
+Flash the firmware, add its ESPHome device to Home Assistant, and confirm the
+commissioning status entity reports manager API version 1 before adding this
+integration.
 
-Until the repository appears in the default HACS catalogue:
+## Quick setup
 
-1. Open **HACS → Integrations**.
-2. Open the three-dot menu and choose **Custom repositories**.
-3. Add `https://github.com/Jordi-14/homeassistant_somfy_io_manager` as an
-   **Integration** repository.
-4. Download **Somfy IO Shutter Manager**.
-5. Restart Home Assistant.
-6. Open **Settings → Devices & services → Add integration**.
-7. Select **Somfy IO Shutter Manager** and choose the online ESPHome bridge.
+1. Open **Settings → Devices & services → Add integration**.
+2. Search for **Somfy IO Shutter Manager**.
+3. Select the compatible online ESPHome bridge.
+4. Open the new integration entry and choose **Configure**.
+5. Pair a new shutter or import an already-paired firmware slot.
 
-## Add a shutter
+One integration entry manages one ESPHome bridge. Repeat the setup for every
+additional bridge needed for radio coverage.
 
-Open the integration and select **Configure → Pair a new shutter**. Choose a
-firmware slot and enter the shutter name, area, full opening time, full closing
-time, and approximate MY percentage.
+## Entities
+
+Each active shutter becomes one Somfy device containing:
+
+| Entity | Purpose |
+| --- | --- |
+| Cover | Open, close, stop, current estimated position, and set position. |
+| MY position button | Recall the motor's native favourite position. |
+| Detected remote sensor | Record every decoded physical-remote press with sanitized diagnostic attributes. |
+
+The fixed slot covers generated by ESPHome remain hidden transport entities.
+They own timing and radio state but are not intended for dashboards.
+
+## Pair a new shutter
+
+Open **Configure → Pair a new shutter**, select a firmware slot, and enter:
+
+- shutter name and optional Home Assistant area;
+- full opening time;
+- full closing time;
+- approximate MY percentage.
 
 The wizard then asks you to:
 
 1. briefly press OPEN or CLOSE on the existing physical remote;
-2. put only the intended shutter into programming mode with the remote's PROG
+2. put only the intended shutter into programming mode with that remote's PROG
    button;
-3. confirm the first motor jog;
+3. confirm the motor jog;
 4. allow the bridge to send one pairing transmission;
 5. confirm the second motor jog.
 
-Do not press PROG until the wizard asks for it. Somfy motors have a limited
-number of paired controllers, and removing one may require a complete motor
-reset.
+Do not press PROG before the wizard asks. Keep the shutter visible and stop if a
+different motor jogs.
 
-## Existing paired controllers
+## Import, move, and swap slots
 
-An existing controller identity can be imported by the ESPHome YAML and then
-adopted through **Configure → Import an already-paired slot**. Importing,
-moving, or swapping slots does not transmit pairing RF.
+Use **Import an already-paired slot** for controller identities configured in
+ESPHome YAML or restored before Home Assistant adopted them. Import does not
+send pairing RF.
 
-Never power two bridges using the same restored controller identity. A rolling
-code stream must have exactly one active owner.
+Slot numbers are organizational and can be changed later:
 
-## Position behaviour
+- **Move a shutter** transfers it to an empty slot.
+- **Swap two shutter slots** exchanges two occupied slots directly.
+- names, areas, devices, calibration, and encrypted snapshots follow the
+  physical shutters.
 
-Position is estimated from calibrated travel time because 1W motors do not
-return authoritative position feedback:
+Moves and swaps commit through firmware NVS safeguards and send no PROG or
+pairing transmissions.
 
-- 100% sends OPEN and lets the motor stop at its physical end stop;
-- 0% sends CLOSE and lets the motor stop at its physical end stop;
-- intermediate percentages send OPEN or CLOSE followed by STOP at the
+## Position and MY behaviour
+
+One-way motors do not return authoritative position. Position is estimated
+from calibrated travel time and corrected at full end stops:
+
+- 100% sends OPEN and lets the physical end stop finish the run;
+- 0% sends CLOSE and lets the physical end stop finish the run;
+- intermediate percentages move in the required direction and send STOP at the
   estimated target;
-- selecting the configured MY percentage while idle recalls the native motor
-  favourite.
+- pressing Stop sends only the stopping frame;
+- pressing MY sends the complete native MY sequence, so an idle shutter moves
+  to its favourite position and a moving shutter first stops cleanly.
 
-Full end-stop runs correct accumulated position-estimation error.
+If position gradually drifts, run the shutter fully to an end stop and verify
+the configured opening and closing times.
 
-## Recovery and safety
+## Recovery and ownership
 
-The ESP persists rolling codes before transmission and publishes an AES-GCM
-encrypted controller snapshot after rolling-code changes. Home Assistant keeps
-the latest opaque snapshot in private integration storage.
+The ESP reserves and persists rolling codes before transmission. After relevant
+changes it publishes an AES-GCM encrypted controller snapshot, which Home
+Assistant stores as an opaque private value.
 
 Keep regular Home Assistant backups and preserve the ESPHome backup key. Never
-publish controller keys, recovery blobs, real remote identifiers, Wi-Fi
-credentials, or API/OTA credentials in an issue.
+power two bridges using the same restored controller identity: a rolling-code
+stream must have exactly one active owner.
+
+If commissioning is interrupted after a radio transmission, the options flow
+offers a safe resume or discard path. Follow that path instead of manually
+repeating pairing frames.
+
+## Troubleshooting
+
+### No compatible ESPHome bridge appears
+
+- Confirm the ESPHome device is online in Home Assistant.
+- Confirm both **Commissioning Status** and **Encrypted Controller Backup**
+  entities exist.
+- Confirm all manager actions are registered by the ESPHome device.
+- Recompile and reinstall the current manager firmware after changing the
+  external-component source.
+- Restart Home Assistant after updating the custom integration.
+
+### Pairing does not produce the expected jog
+
+- Keep only the intended shutter in programming mode.
+- Use a short PROG press unless the motor documentation says otherwise.
+- Do not repeat the pairing transmission blindly.
+- Use the wizard's recovery path after an interrupted or uncertain attempt.
+
+### Commands work but estimated position is wrong
+
+- Measure full travel in both directions and update calibration.
+- Complete one full open or close run to correct accumulated drift.
+- Remember that movement from the physical remote is observable only when its
+  frames are received by the bridge.
+
+### Debug logging
+
+Enable temporary debug logging from the integration entry menu, reproduce the
+problem, then disable logging to download the log bundle. Alternatively:
+
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.somfy_io_manager: debug
+```
+
+Review all files before sharing them. Never post ESPHome secrets, controller
+keys, encrypted recovery values, remote or node identifiers, Home Assistant
+backups, local addresses, or Wi-Fi/API/OTA credentials.
+
+### Diagnostics
+
+Open **Settings → Devices & services → Somfy IO Shutter Manager**, open the
+integration menu, and choose **Download diagnostics**.
+
+Diagnostics report manager API compatibility, entity and action availability,
+anonymous slot calibration, recovery availability, and commissioning health.
+They deliberately omit shutter names, areas, internal identities, controller
+keys, recovery payloads, rolling codes, remote IDs, node IDs, and generated
+service/entity IDs. Review the file before attaching it to an issue.
 
 ## Development
 
@@ -150,10 +307,19 @@ credentials, or API/OTA credentials in an issue.
 python -m pip install -r requirements_test.txt
 ruff check .
 pytest -q
+python -m compileall -q custom_components scripts tests
+python scripts/package_hacs_release.py
 ```
 
-Issues should include Home Assistant, integration, ESPHome, board, and radio
-module versions plus redacted logs.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for repository boundaries, testing, and
+safe hardware-reporting requirements. Release preparation is documented in
+[RELEASE.md](RELEASE.md), and user-visible changes are listed in
+[CHANGELOG.md](CHANGELOG.md).
+
+## Security
+
+Use GitHub's private vulnerability-reporting feature for security-sensitive
+problems. See [SECURITY.md](SECURITY.md).
 
 ## License
 

@@ -1,0 +1,46 @@
+name: Feature Request
+description: Request a new manager feature, entity, hardware path, or workflow improvement
+title: "[Feature Request]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for new features. Use the Support / Bug form when existing behaviour is broken.
+
+        New radio behaviour requires sanitized captures, repeatable real-hardware evidence, and a safe recovery path. Never publish controller keys, recovery blobs, remote identifiers, or raw Home Assistant backups.
+  - type: dropdown
+    id: request_type
+    attributes:
+      label: What kind of feature is this?
+      options:
+        - New Home Assistant entity or control
+        - Commissioning, calibration, recovery, or slot-management improvement
+        - Additional ESP32 or CC1101 hardware support
+        - Additional motor or protocol support
+        - Documentation or troubleshooting improvement
+        - Other behaviour improvement
+    validations:
+      required: true
+  - type: textarea
+    id: request
+    attributes:
+      label: What would you like to add?
+    validations:
+      required: true
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Why is this useful?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Hardware and protocol evidence
+      description: Include models, firmware versions, sanitized observations, and recovery information when relevant.
+  - type: textarea
+    id: proposed_behaviour
+    attributes:
+      label: Proposed Home Assistant behaviour
+      description: Describe the desired entity, config-flow step, command semantics, or automation use.

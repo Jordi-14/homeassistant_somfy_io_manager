@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1
+
+- Add privacy-preserving Home Assistant diagnostics.
+- Add a HACS release ZIP and automated release-asset publishing.
+- Expand installation, commissioning, troubleshooting, safety, and development documentation.
+- Add structured project tooling and feature-request guidance.
+
 ## 0.6.0
 
 - Add graphical commissioning for independent io-homecontrol 1W shutters.
