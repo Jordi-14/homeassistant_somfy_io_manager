@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable
 import json
 import logging
+from collections.abc import Iterable
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -237,9 +237,11 @@ class SomfyIOManagerRuntime:
                 return
             if requested_slots and status.get("slot") not in requested_slots:
                 return
-            if status.get("action") in expected or status.get("action") == "error":
-                if not future.done():
-                    future.set_result(status)
+            if (
+                status.get("action") in expected
+                or status.get("action") == "error"
+            ) and not future.done():
+                future.set_result(status)
 
         remove = async_track_state_change_event(
             self.hass, self.status_entity_id, status_changed

@@ -25,7 +25,6 @@ from .entity import (
 )
 from .runtime import SomfyIOManagerRuntime, parse_status
 
-
 _REMOTE_COMMAND_NAMES = {
     "0X0000": "Open",
     "0XC800": "Close",

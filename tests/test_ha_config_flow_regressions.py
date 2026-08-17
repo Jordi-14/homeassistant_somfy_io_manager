@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-
 FLOW_SOURCE = (
     Path(__file__).parent.parent
     / "custom_components"
