@@ -102,6 +102,9 @@ def test_every_options_menu_entry_is_translated_in_all_catalogues():
         "edit_calibration",
         "move_shutter",
         "swap_shutters",
+        "add_group_remote",
+        "edit_group_remote",
+        "remove_group_remote",
         "resume_attempt",
     }
     for relative_path in (
@@ -187,12 +190,61 @@ def test_venetian_gui_configures_native_tilt_without_affecting_normal_shutters()
     assert '"my_tilt_step": int(' in FLOW_SOURCE
     assert "CoverEntityFeature.SET_TILT_POSITION" in cover_source
     assert "CoverEntityFeature.STOP_TILT" in cover_source
-    assert "CoverEntityFeature.OPEN_TILT" not in cover_source
-    assert "CoverEntityFeature.CLOSE_TILT" not in cover_source
+    assert "CoverEntityFeature.OPEN_TILT" in cover_source
+    assert "CoverEntityFeature.CLOSE_TILT" in cover_source
     assert "async_set_cover_tilt_position" in cover_source
+    assert 'self._async_control("tilt_position", 100.0)' in cover_source
+    assert 'self._async_control("tilt_position", 0.0)' in cover_source
     assert "COVER_TYPE_SHUTTER" in cover_source
+
+
+def test_venetian_default_matches_ha_open_tilt_convention():
+    assert "defaults.get(CONF_TILT_INVERTED, True)" in FLOW_SOURCE
+    assert "self._draft.get(CONF_TILT_INVERTED, True)" in FLOW_SOURCE
 
 
 def test_venetian_physical_remote_events_are_friendly():
     assert '"0XF00D": "Tilt clockwise"' in SENSOR_SOURCE
     assert '"0XF00E": "Tilt counterclockwise"' in SENSOR_SOURCE
+
+
+def test_group_remote_aliases_support_any_number_of_shutters_without_pairing():
+    add = FLOW_SOURCE.split("async def async_step_add_group_remote", 1)[1]
+    add = add.split("async def async_step_capture_group_remote", 1)[0]
+    capture = FLOW_SOURCE.split("async def async_step_capture_group_remote", 1)[1]
+    capture = capture.split("async def async_step_edit_group_remote", 1)[0]
+
+    assert "multiple=True" in add
+    assert '"remote_alias"' in add
+    assert '"action": "discover"' in add
+    assert '"action": "set"' in capture
+    assert '"pair"' not in add
+    assert '"pair"' not in capture
+    assert "selected.update(alias[CONF_SHUTTER_IDS])" in capture
+
+
+def test_group_membership_uses_permanent_shutter_ids_and_can_be_replaced():
+    constants = (INTEGRATION_ROOT / "const.py").read_text()
+    assert 'CONF_REMOTE_ALIASES = "remote_aliases"' in constants
+    assert 'CONF_SHUTTER_IDS = "shutter_ids"' in constants
+    assert "CONF_SHUTTER_ID" in FLOW_SOURCE
+    targets = FLOW_SOURCE.split("async def async_step_group_remote_targets", 1)[1]
+    targets = targets.split("async def async_step_remove_group_remote", 1)[0]
+    assert "multiple=True" in targets
+    assert "_save_remote_alias" in targets
+    assert '"action": "set"' in targets
+
+
+def test_group_aliases_are_reapplied_after_bridge_replacement():
+    init_source = (INTEGRATION_ROOT / "__init__.py").read_text()
+    assert "async_sync_remote_aliases" in RUNTIME_SOURCE
+    assert '"action": "set"' in RUNTIME_SOURCE
+    assert "CONF_SHUTTER_ID" in RUNTIME_SOURCE
+    assert "_async_sync_remote_aliases(runtime)" in init_source
+
+
+def test_config_entry_v3_adds_group_alias_storage_without_touching_shutters():
+    init_source = (INTEGRATION_ROOT / "__init__.py").read_text()
+    assert "VERSION = 3" in FLOW_SOURCE
+    assert "entry.version < 3" in init_source
+    assert "options.setdefault(CONF_REMOTE_ALIASES, [])" in init_source

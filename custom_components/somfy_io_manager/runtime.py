@@ -17,12 +17,17 @@ from .const import (
     CONF_BACKUP_ENTITY_ID,
     CONF_DEVICE_NAME,
     CONF_ESPHOME_ENTRY_ID,
+    CONF_REMOTE,
+    CONF_REMOTE_ALIASES,
+    CONF_SHUTTER_ID,
+    CONF_SHUTTER_IDS,
     CONF_SHUTTERS,
     CONF_SLOT,
     CONF_STATE,
     CONF_STATUS_ENTITY_ID,
     DOMAIN,
     MANAGER_API_VERSION,
+    STATE_ACTIVE,
     STATE_UNCERTAIN,
     STORAGE_VERSION,
 )
@@ -284,3 +289,33 @@ class SomfyIOManagerRuntime:
             raise ManagerUnavailable("encrypted backup entity is unavailable")
         self.async_remember_backup(slot, state.state)
         return state.state
+
+    async def async_sync_remote_aliases(self) -> None:
+        """Restore receive-only group mappings from HA's durable metadata."""
+        shutters = {
+            str(shutter.get(CONF_SHUTTER_ID)): int(shutter[CONF_SLOT])
+            for shutter in self.entry.options.get(CONF_SHUTTERS, [])
+            if shutter.get(CONF_STATE) == STATE_ACTIVE
+            and shutter.get(CONF_SHUTTER_ID)
+        }
+        for alias in self.entry.options.get(CONF_REMOTE_ALIASES, []):
+            remote = alias.get(CONF_REMOTE)
+            selected = alias.get(CONF_SHUTTER_IDS, [])
+            slots = sorted(
+                {
+                    shutters[shutter_id]
+                    for shutter_id in selected
+                    if shutter_id in shutters
+                }
+            )
+            if not isinstance(remote, str) or not slots:
+                continue
+            await self.async_call(
+                "remote_alias",
+                {
+                    "action": "set",
+                    "remote": remote,
+                    "slots": ",".join(str(slot) for slot in slots),
+                },
+                "alias_saved",
+            )

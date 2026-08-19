@@ -16,6 +16,7 @@ from .const import (
     CONF_MY_PERCENT,
     CONF_MY_TILT_STEP,
     CONF_OPEN_SECONDS,
+    CONF_REMOTE_ALIASES,
     CONF_SHUTTERS,
     CONF_SLOT,
     CONF_STATE,
@@ -28,7 +29,7 @@ from .const import (
     STATE_ACTIVE,
     STATE_UNCERTAIN,
 )
-from .runtime import SomfyIOManagerRuntime, parse_status
+from .runtime import ManagerError, SomfyIOManagerRuntime, parse_status
 
 _SERVICE_SUFFIXES = (
     "commission",
@@ -38,6 +39,7 @@ _SERVICE_SUFFIXES = (
     "move",
     "swap",
     "venetian",
+    "remote_alias",
 )
 _SAFE_STATUS_FIELDS = ("v", "event", "action", "slot", "state", "rssi")
 
@@ -52,6 +54,7 @@ async def async_get_config_entry_diagnostics(
     status_state = hass.states.get(entry.data[CONF_STATUS_ENTITY_ID])
     backup_state = hass.states.get(entry.data[CONF_BACKUP_ENTITY_ID])
     status = parse_status(status_state.state if status_state else None)
+    receive_pipeline = await _async_receive_pipeline(runtime)
 
     diagnostics: dict[str, Any] = {
         "entry": {
@@ -64,6 +67,7 @@ async def async_get_config_entry_diagnostics(
             "backup_entity_available": _state_available(backup_state),
             "services": _service_availability(hass, entry.data[CONF_DEVICE_NAME]),
             "last_status": _sanitized_manager_status(status),
+            "receive_pipeline": receive_pipeline,
         },
     }
 
@@ -78,7 +82,51 @@ async def async_get_config_entry_diagnostics(
         ),
         "slots": _shutter_diagnostics(shutters, runtime),
     }
+    aliases = entry.options.get(CONF_REMOTE_ALIASES, [])
+    diagnostics["group_remotes"] = {
+        "count": len(aliases),
+        "member_counts": sorted(
+            len(alias.get("shutter_ids", []))
+            for alias in aliases
+            if isinstance(alias, dict)
+        ),
+    }
     return diagnostics
+
+
+async def _async_receive_pipeline(
+    runtime: SomfyIOManagerRuntime | None,
+) -> dict[str, Any]:
+    """Request anonymous boot-local counters from each RX pipeline stage."""
+    if runtime is None:
+        return {"available": False}
+    try:
+        status = await runtime.async_call(
+            "commission",
+            {"action": "rx_stats", "slot": 0},
+            "rx_stats",
+            timeout=5.0,
+        )
+    except ManagerError:
+        return {"available": False}
+
+    result: dict[str, Any] = {"available": True}
+    fields = {
+        "raw": ("raw_packets", int),
+        "valid": ("crc_valid_frames", int),
+        "accepted": ("accepted_remote_commands", int),
+        "last_rssi": ("last_valid_rssi", float),
+    }
+    for item in str(status.get("detail") or "").split(","):
+        key, separator, value = item.partition("=")
+        if not separator or key not in fields:
+            continue
+        output_key, converter = fields[key]
+        try:
+            result[output_key] = converter(value)
+        except ValueError:
+            continue
+    return result
 
 
 def _state_available(state: Any) -> bool:

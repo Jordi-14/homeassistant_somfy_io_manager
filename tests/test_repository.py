@@ -19,9 +19,9 @@ def test_public_versions_are_aligned() -> None:
     project = (ROOT / "pyproject.toml").read_text()
     changelog = (ROOT / "CHANGELOG.md").read_text()
 
-    assert manifest["version"] == "0.7.0b1"
-    assert 'version = "0.7.0b1"' in project
-    assert "## 0.7.0b1" in changelog
+    assert manifest["version"] == "0.7.0b2"
+    assert 'version = "0.7.0b2"' in project
+    assert "## 0.7.0b2" in changelog
 
 
 def test_diagnostics_status_allowlist_excludes_private_radio_state() -> None:
@@ -42,6 +42,7 @@ def test_diagnostics_status_allowlist_excludes_private_radio_state() -> None:
     assert safe_fields.isdisjoint(
         {"remote", "node", "next", "rolling_code", "key", "detail"}
     )
+    assert '"accepted_remote_commands"' in source
     assert "CONF_NAME" not in source
     assert "CONF_AREA_ID" not in source
     assert "CONF_SHUTTER_ID" not in source

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.0b2
+
+- Align Venetian tilt with Home Assistant's convention: 100% is fully open and
+  0% is fully closed.
+- Expose native open-tilt and close-tilt actions now that both endpoints are
+  unambiguous.
+- Report UP as fully open tilt and DOWN as fully closed tilt for both Home
+  Assistant commands and decoded physical-remote commands.
+- Improve physical-remote capture reliability with a hardware-validated
+  noise-relative carrier threshold, full receiver gain, strict sync, and the
+  original 60-byte capture window in the matching ESPHome component.
+- Add privacy-safe raw, CRC-valid, and accepted-command counters to downloaded
+  diagnostics.
+- Add GUI-managed physical group remotes. A group may synchronize any number
+  of shutters, and a shutter may belong to multiple overlapping groups.
+- Keep group membership attached to permanent shutter identities across slot
+  moves and swaps, and restore it automatically after bridge replacement.
+- Use the physical source identity and measured RSSI in remote events, including
+  events received through a group mapping.
+- Keep group discovery and maintenance receive-only: no PROG, pairing slot, or
+  transmitted radio frame is required.
+
 ## 0.7.0b1
 
 - Add GUI-managed Venetian shutters with native Home Assistant tilt controls.

@@ -12,6 +12,7 @@ from homeassistant.helpers.event import async_call_later
 
 from .const import (
     CONF_DEVICE_NAME,
+    CONF_REMOTE_ALIASES,
     CONF_SHUTTERS,
     CONF_SLOT,
     CONF_STATE,
@@ -22,15 +23,16 @@ from .const import (
 )
 from .entity import ensure_shutter_id
 from .entity_migration import reconcile_transport_entities
-from .runtime import SomfyIOManagerRuntime
+from .runtime import ManagerError, SomfyIOManagerRuntime
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Add internal shutter identities and discard legacy entity-ID metadata."""
-    if entry.version > 2:
+    if entry.version > 3:
         return False
+    options = dict(entry.options)
     if entry.version < 2:
         entity_registry = er.async_get(hass)
         for entity in list(
@@ -43,7 +45,6 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ):
             device_registry.async_remove_device(device.id)
 
-        options = dict(entry.options)
         shutters = []
         for stored in options.get(CONF_SHUTTERS, []):
             shutter = dict(stored)
@@ -51,7 +52,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             shutter.pop("cover_entity_id", None)
             shutters.append(shutter)
         options[CONF_SHUTTERS] = shutters
-        hass.config_entries.async_update_entry(entry, options=options, version=2)
+    if entry.version < 3:
+        options.setdefault(CONF_REMOTE_ALIASES, [])
+        hass.config_entries.async_update_entry(entry, options=options, version=3)
     return True
 
 
@@ -65,6 +68,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _reconcile_transports(hass, entry, runtime)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+    if entry.options.get(CONF_REMOTE_ALIASES):
+        hass.async_create_task(
+            _async_sync_remote_aliases(runtime),
+            "restore Somfy IO group remote aliases",
+        )
     return True
 
 
@@ -81,6 +89,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload per-shutter entities after the GUI changes metadata."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def _async_sync_remote_aliases(runtime: SomfyIOManagerRuntime) -> None:
+    """Reapply HA's non-secret group mappings after bridge replacement."""
+    try:
+        await runtime.async_sync_remote_aliases()
+    except ManagerError:
+        _LOGGER.warning(
+            "Could not synchronize Somfy group remote aliases; will retry on "
+            "the next integration reload"
+        )
 
 
 def _remove_obsolete_bridge_device(hass: HomeAssistant, entry: ConfigEntry) -> None:

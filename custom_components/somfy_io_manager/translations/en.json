@@ -28,6 +28,9 @@
           "edit_calibration": "Edit shutter calibration",
           "move_shutter": "Move a shutter to another slot",
           "swap_shutters": "Swap two shutter slots",
+          "add_group_remote": "Add a physical group remote",
+          "edit_group_remote": "Edit a group remote",
+          "remove_group_remote": "Remove a group remote",
           "resume_attempt": "Resume or safely discard an unfinished attempt"
         }
       },
@@ -44,7 +47,7 @@
           "cover_type": "Cover type",
           "tilt_steps": "Counted tilt detents between endpoints",
           "my_tilt_step": "Saved MY tilt step from counterclockwise endpoint",
-          "tilt_inverted": "Clockwise decreases tilt percentage"
+          "tilt_inverted": "Counterclockwise endpoint is fully open (100%)"
         }
       },
       "capture_remote": {
@@ -82,7 +85,7 @@
           "cover_type": "Cover type",
           "tilt_steps": "Counted tilt detents between endpoints",
           "my_tilt_step": "Saved MY tilt step from counterclockwise endpoint",
-          "tilt_inverted": "Clockwise decreases tilt percentage"
+          "tilt_inverted": "Counterclockwise endpoint is fully open (100%)"
         }
       },
       "resume_attempt": {
@@ -115,6 +118,41 @@
           "target_slot": "Second shutter"
         }
       },
+      "add_group_remote": {
+        "title": "Add a physical group remote",
+        "description": "Select every managed shutter moved by the same physical group/channel button. You may select any number of shutters. The next step only listens for the existing remote; it does not transmit pairing radio or consume a motor controller slot.",
+        "data": {
+          "shutter_ids": "Shutters controlled by this group"
+        }
+      },
+      "capture_group_remote": {
+        "title": "Capture the physical group remote",
+        "description": "The bridge is listening for 120 seconds. On the physical remote, select the group or All Channels mode that controls these {count} shutter(s), then briefly press OPEN or CLOSE once. Do not press PROG. Tick the box and submit after pressing the button.",
+        "data": {
+          "remote_pressed": "I pressed OPEN or CLOSE in the intended group mode"
+        }
+      },
+      "edit_group_remote": {
+        "title": "Choose a physical group remote",
+        "data": {
+          "group_remote": "Group remote"
+        }
+      },
+      "group_remote_targets": {
+        "title": "Choose every shutter in this group",
+        "description": "Replace the complete shutter membership for physical group identity {remote}. A group may contain any number of managed shutters, and a shutter may belong to several groups. No radio is transmitted.",
+        "data": {
+          "shutter_ids": "Shutters controlled by this group"
+        }
+      },
+      "remove_group_remote": {
+        "title": "Remove a physical group remote",
+        "description": "This only removes passive state tracking for the selected identity. It does not unpair the remote from any motor and transmits no radio.",
+        "data": {
+          "group_remote": "Group remote",
+          "confirm_remove": "Remove this group mapping"
+        }
+      },
       "calibration_values": {
         "title": "Position calibration",
         "description": "Enter measured end-to-end movement times. MY is the approximate cover percentage used by Home Assistant's height model; the radio still recalls the motor's native favourite. For a Venetian blind, also enter the saved MY slat step counted clockwise from the counterclockwise endpoint.",
@@ -125,7 +163,7 @@
           "cover_type": "Cover type",
           "tilt_steps": "Counted tilt detents between endpoints",
           "my_tilt_step": "Saved MY tilt step from counterclockwise endpoint",
-          "tilt_inverted": "Clockwise decreases tilt percentage"
+          "tilt_inverted": "Counterclockwise endpoint is fully open (100%)"
         }
       },
       "finish_setup": {
@@ -144,6 +182,11 @@
       "manager_unavailable": "The ESPHome commissioning manager did not respond. Check that the bridge is online and its custom actions are enabled.",
       "press_remote_first": "Press OPEN or CLOSE on the physical remote before continuing.",
       "remote_not_detected": "No matching remote press was captured. Listening has restarted for another 120 seconds.",
+      "select_at_least_one_shutter": "Select at least one managed shutter.",
+      "group_shutter_missing": "One of the selected shutters is no longer active on this bridge.",
+      "press_group_remote_first": "Press OPEN or CLOSE in the intended physical group mode before continuing.",
+      "group_remote_not_detected": "No matching group press was captured. Listening has restarted for another 120 seconds.",
+      "confirm_group_remote_removal": "Confirm that you want to remove this passive group mapping.",
       "program_jog_required": "Confirm the first programming jog before a pairing frame can be sent.",
       "slot_not_active": "That firmware slot does not contain a confirmed active controller.",
       "cannot_discard_after_pairing": "This identity cannot be discarded because a pairing frame may already have reached the shutter.",
@@ -155,6 +198,7 @@
     "abort": {
       "no_pending_attempts": "There are no unfinished attempts.",
       "no_managed_shutters": "No shutters have been added to this bridge.",
+      "no_group_remotes": "No physical group remotes have been added.",
       "not_enough_managed_shutters": "At least two managed shutters are required for a slot swap."
     }
   },

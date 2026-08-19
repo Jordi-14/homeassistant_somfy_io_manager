@@ -78,7 +78,9 @@ class SomfyManagedCover(CoverEntity):
         | CoverEntityFeature.SET_POSITION
     )
     _TILT_FEATURES = (
-        CoverEntityFeature.STOP_TILT
+        CoverEntityFeature.OPEN_TILT
+        | CoverEntityFeature.CLOSE_TILT
+        | CoverEntityFeature.STOP_TILT
         | CoverEntityFeature.SET_TILT_POSITION
     )
 

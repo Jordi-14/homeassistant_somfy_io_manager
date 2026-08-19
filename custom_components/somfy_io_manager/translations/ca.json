@@ -24,6 +24,9 @@
           "edit_calibration": "Edita el calibratge",
           "move_shutter": "Canvia una persiana de ranura",
           "swap_shutters": "Intercanvia les ranures de dues persianes",
+          "add_group_remote": "Afegeix un comandament físic de grup",
+          "edit_group_remote": "Edita un comandament de grup",
+          "remove_group_remote": "Elimina un comandament de grup",
           "resume_attempt": "Reprèn o descarta de manera segura un intent inacabat"
         }
       },
@@ -40,7 +43,7 @@
           "cover_type": "Tipus de persiana",
           "tilt_steps": "Clics d'inclinació comptats entre extrems",
           "my_tilt_step": "Pas d'inclinació MY desat des de l'extrem antihorari",
-          "tilt_inverted": "El gir horari redueix el percentatge d'inclinació"
+          "tilt_inverted": "L'extrem antihorari és totalment obert (100%)"
         }
       },
       "capture_remote": {
@@ -72,7 +75,7 @@
           "cover_type": "Tipus de persiana",
           "tilt_steps": "Clics d'inclinació comptats entre extrems",
           "my_tilt_step": "Pas d'inclinació MY desat des de l'extrem antihorari",
-          "tilt_inverted": "El gir horari redueix el percentatge d'inclinació"
+          "tilt_inverted": "L'extrem antihorari és totalment obert (100%)"
         }
       },
       "resume_attempt": {
@@ -100,6 +103,41 @@
           "target_slot": "Segona persiana"
         }
       },
+      "add_group_remote": {
+        "title": "Afegeix un comandament físic de grup",
+        "description": "Selecciona totes les persianes gestionades que mou el mateix botó de grup o canal del comandament físic. Pots seleccionar qualsevol nombre de persianes. El pas següent només escolta el comandament existent; no transmet cap vinculació ni consumeix cap ranura de controlador del motor.",
+        "data": {
+          "shutter_ids": "Persianes controlades per aquest grup"
+        }
+      },
+      "capture_group_remote": {
+        "title": "Captura el comandament físic de grup",
+        "description": "El pont escolta durant 120 segons. Al comandament físic, selecciona el grup o el mode Tots els canals que controla aquestes {count} persianes i prem breument OBRIR o TANCAR una vegada. No premis PROG. Després marca la casella i continua.",
+        "data": {
+          "remote_pressed": "He premut OBRIR o TANCAR en el mode de grup correcte"
+        }
+      },
+      "edit_group_remote": {
+        "title": "Tria un comandament físic de grup",
+        "data": {
+          "group_remote": "Comandament de grup"
+        }
+      },
+      "group_remote_targets": {
+        "title": "Tria totes les persianes d'aquest grup",
+        "description": "Substitueix la llista completa de persianes de la identitat física de grup {remote}. Un grup pot contenir qualsevol nombre de persianes gestionades i una persiana pot pertànyer a diversos grups. No es transmet cap trama de ràdio.",
+        "data": {
+          "shutter_ids": "Persianes controlades per aquest grup"
+        }
+      },
+      "remove_group_remote": {
+        "title": "Elimina un comandament físic de grup",
+        "description": "Això només elimina el seguiment passiu de l'estat per a la identitat seleccionada. No desvincula el comandament de cap motor i no transmet cap trama de ràdio.",
+        "data": {
+          "group_remote": "Comandament de grup",
+          "confirm_remove": "Elimina aquesta assignació de grup"
+        }
+      },
       "calibration_values": {
         "title": "Calibratge de posició",
         "description": "Introdueix els temps mesurats entre finals de cursa. MY és el percentatge aproximat del model d'alçada de Home Assistant; la ràdio continua recuperant el favorit natiu del motor. Per a una persiana veneciana, introdueix també el pas d'inclinació MY desat comptat en sentit horari des de l'extrem antihorari.",
@@ -110,7 +148,7 @@
           "cover_type": "Tipus de persiana",
           "tilt_steps": "Clics d'inclinació comptats entre extrems",
           "my_tilt_step": "Pas d'inclinació MY desat des de l'extrem antihorari",
-          "tilt_inverted": "El gir horari redueix el percentatge d'inclinació"
+          "tilt_inverted": "L'extrem antihorari és totalment obert (100%)"
         }
       },
       "finish_setup": {
@@ -127,6 +165,11 @@
       "manager_unavailable": "El gestor ESPHome no ha respost. Comprova que el pont estigui en línia i que tingui activades les accions personalitzades.",
       "press_remote_first": "Prem OBRIR o TANCAR al comandament físic abans de continuar.",
       "remote_not_detected": "No s'ha capturat cap pulsació coincident. L'escolta s'ha reiniciat durant 120 segons.",
+      "select_at_least_one_shutter": "Selecciona almenys una persiana gestionada.",
+      "group_shutter_missing": "Una de les persianes seleccionades ja no està activa en aquest pont.",
+      "press_group_remote_first": "Prem OBRIR o TANCAR en el mode de grup físic correcte abans de continuar.",
+      "group_remote_not_detected": "No s'ha capturat cap pulsació de grup coincident. L'escolta s'ha reiniciat durant 120 segons.",
+      "confirm_group_remote_removal": "Confirma que vols eliminar aquesta assignació passiva de grup.",
       "program_jog_required": "Confirma el primer moviment de programació abans d'enviar la vinculació.",
       "slot_not_active": "Aquesta ranura no conté cap controlador actiu confirmat.",
       "cannot_discard_after_pairing": "Aquesta identitat no es pot descartar perquè la trama de vinculació podria haver arribat a la persiana.",
@@ -138,6 +181,7 @@
     "abort": {
       "no_pending_attempts": "No hi ha intents inacabats.",
       "no_managed_shutters": "Encara no s'ha afegit cap persiana a aquest pont.",
+      "no_group_remotes": "Encara no s'ha afegit cap comandament físic de grup.",
       "not_enough_managed_shutters": "Calen almenys dues persianes gestionades per intercanviar ranures."
     }
   },

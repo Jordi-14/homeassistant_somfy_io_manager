@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -22,6 +23,10 @@ from .const import (
     CONF_MY_TILT_STEP,
     CONF_NAME,
     CONF_OPEN_SECONDS,
+    CONF_REMOTE,
+    CONF_REMOTE_ALIASES,
+    CONF_SHUTTER_ID,
+    CONF_SHUTTER_IDS,
     CONF_SHUTTERS,
     CONF_SLOT,
     CONF_STATE,
@@ -57,6 +62,8 @@ CONF_PAIRING_JOGGED = "pairing_jogged"
 CONF_ATTEMPT = "attempt"
 CONF_RESUME_ACTION = "resume_action"
 CONF_RETRY_SETUP = "retry_setup"
+CONF_GROUP_REMOTE = "group_remote"
+CONF_CONFIRM_REMOVE = "confirm_remove"
 
 ACTION_CONTINUE = "continue"
 ACTION_DISCARD = "discard"
@@ -72,6 +79,14 @@ class FlowError(Exception):
 
 def _service_prefix(device_name: str) -> str:
     return device_name.replace("-", "_")
+
+
+def _normalize_remote(value: Any) -> str:
+    """Use a stable, human-readable 24-bit remote identity."""
+    text = str(value or "").strip()
+    if re.fullmatch(r"0[xX][0-9a-fA-F]{6}", text) is None:
+        return ""
+    return f"0x{text[2:].upper()}"
 
 
 def _manager_entities(
@@ -124,6 +139,7 @@ def _eligible_bridges(hass: HomeAssistant) -> dict[str, dict[str, str]]:
                 "move",
                 "swap",
                 "venetian",
+                "remote_alias",
             )
         ):
             continue
@@ -184,7 +200,7 @@ def _details_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
         ): _number_selector(0, 254, 1),
         vol.Required(
             CONF_TILT_INVERTED,
-            default=defaults.get(CONF_TILT_INVERTED, False),
+            default=defaults.get(CONF_TILT_INVERTED, True),
         ): selector.BooleanSelector(),
     }
     return vol.Schema(fields)
@@ -232,7 +248,7 @@ def _validate_details(user_input: dict[str, Any]) -> dict[str, Any]:
     details[CONF_TILT_STEPS] = int(details.get(CONF_TILT_STEPS, 12))
     details[CONF_MY_TILT_STEP] = int(details.get(CONF_MY_TILT_STEP, 6))
     details[CONF_TILT_INVERTED] = bool(
-        details.get(CONF_TILT_INVERTED, False)
+        details.get(CONF_TILT_INVERTED, True)
     )
     if (
         details[CONF_COVER_TYPE] == COVER_TYPE_VENETIAN
@@ -245,7 +261,7 @@ def _validate_details(user_input: dict[str, Any]) -> dict[str, Any]:
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Connect the GUI manager to one ESPHome radio bridge."""
 
-    VERSION = 2
+    VERSION = 3
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -271,7 +287,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_STATUS_ENTITY_ID: bridge[CONF_STATUS_ENTITY_ID],
                         CONF_BACKUP_ENTITY_ID: bridge[CONF_BACKUP_ENTITY_ID],
                     },
-                    options={CONF_SHUTTERS: []},
+                    options={CONF_SHUTTERS: [], CONF_REMOTE_ALIASES: []},
                 )
 
         choices = [
@@ -309,6 +325,8 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         self._draft: dict[str, Any] = {}
         self._slot: int | None = None
         self._replacing_slot: int | None = None
+        self._alias_remote: str | None = None
+        self._alias_shutter_ids: list[str] = []
 
     @property
     def _runtime(self) -> SomfyIOManagerRuntime:
@@ -316,6 +334,107 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
 
     def _shutters(self) -> list[dict[str, Any]]:
         return [dict(item) for item in self.config_entry.options.get(CONF_SHUTTERS, [])]
+
+    def _remote_aliases(self) -> list[dict[str, Any]]:
+        """Return a mutable copy of receive-only group mappings."""
+        aliases = []
+        for item in self.config_entry.options.get(CONF_REMOTE_ALIASES, []):
+            if not isinstance(item, dict) or not isinstance(
+                item.get(CONF_SHUTTER_IDS), list
+            ):
+                continue
+            remote = _normalize_remote(item.get(CONF_REMOTE))
+            if not remote:
+                continue
+            aliases.append(
+                {
+                    CONF_REMOTE: remote,
+                    CONF_SHUTTER_IDS: [
+                        str(value) for value in item[CONF_SHUTTER_IDS]
+                    ],
+                }
+            )
+        return aliases
+
+    def _active_shutters(self) -> list[dict[str, Any]]:
+        shutters = [
+            shutter
+            for shutter in self._shutters()
+            if shutter.get(CONF_STATE) == STATE_ACTIVE
+        ]
+        for shutter in shutters:
+            ensure_shutter_id(shutter)
+        return shutters
+
+    def _shutter_alias_options(self) -> list[selector.SelectOptionDict]:
+        return [
+            selector.SelectOptionDict(
+                value=str(shutter[CONF_SHUTTER_ID]),
+                label=f"{shutter[CONF_NAME]} (slot {int(shutter[CONF_SLOT]) + 1})",
+            )
+            for shutter in self._active_shutters()
+        ]
+
+    def _selected_shutter_ids(self, value: Any) -> list[str]:
+        selected = [value] if isinstance(value, str) else list(value or [])
+        valid = {
+            str(shutter[CONF_SHUTTER_ID]) for shutter in self._active_shutters()
+        }
+        result = sorted({str(item) for item in selected if str(item) in valid})
+        if not result:
+            raise FlowError("select_at_least_one_shutter")
+        return result
+
+    def _slots_csv(self, shutter_ids: list[str]) -> str:
+        selected = set(shutter_ids)
+        slots = sorted(
+            int(shutter[CONF_SLOT])
+            for shutter in self._active_shutters()
+            if str(shutter[CONF_SHUTTER_ID]) in selected
+        )
+        if len(slots) != len(selected):
+            raise FlowError("group_shutter_missing")
+        return ",".join(str(slot) for slot in slots)
+
+    def _group_remote_options(self) -> list[selector.SelectOptionDict]:
+        names = {
+            str(shutter[CONF_SHUTTER_ID]): str(shutter[CONF_NAME])
+            for shutter in self._active_shutters()
+        }
+        options = []
+        for alias in self._remote_aliases():
+            affected = [
+                names[shutter_id]
+                for shutter_id in alias[CONF_SHUTTER_IDS]
+                if shutter_id in names
+            ]
+            options.append(
+                selector.SelectOptionDict(
+                    value=alias[CONF_REMOTE],
+                    label=f"{alias[CONF_REMOTE]} — {', '.join(affected)}",
+                )
+            )
+        return options
+
+    def _save_remote_alias(
+        self, remote: str, shutter_ids: list[str]
+    ) -> config_entries.ConfigFlowResult:
+        aliases = [
+            alias
+            for alias in self._remote_aliases()
+            if alias[CONF_REMOTE] != remote
+        ]
+        aliases.append(
+            {CONF_REMOTE: remote, CONF_SHUTTER_IDS: sorted(set(shutter_ids))}
+        )
+        aliases.sort(key=lambda item: item[CONF_REMOTE])
+        return self.async_create_entry(
+            title="",
+            data={
+                **self.config_entry.options,
+                CONF_REMOTE_ALIASES: aliases,
+            },
+        )
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -326,6 +445,10 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             menu.extend(("edit_calibration", "move_shutter"))
         if len(self._shutters()) >= 2:
             menu.append("swap_shutters")
+        if self._active_shutters():
+            menu.append("add_group_remote")
+        if self._remote_aliases():
+            menu.extend(("edit_group_remote", "remove_group_remote"))
         if self._runtime.pending:
             menu.append("resume_attempt")
         return self.async_show_menu(step_id="init", menu_options=menu)
@@ -766,7 +889,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                     ): _number_selector(0, 254, 1),
                     vol.Required(
                         CONF_TILT_INVERTED,
-                        default=self._draft.get(CONF_TILT_INVERTED, False),
+                        default=self._draft.get(CONF_TILT_INVERTED, True),
                     ): selector.BooleanSelector(),
                 }
             ),
@@ -855,6 +978,258 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             errors=errors,
         )
 
+    async def async_step_add_group_remote(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Capture a receive-only remote identity for any set of shutters."""
+        if not self._active_shutters():
+            return self.async_abort(reason="no_managed_shutters")
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                self._alias_shutter_ids = self._selected_shutter_ids(
+                    user_input.get(CONF_SHUTTER_IDS)
+                )
+                await self._runtime.async_call(
+                    "remote_alias",
+                    {
+                        "action": "discover",
+                        "remote": "",
+                        "slots": self._slots_csv(self._alias_shutter_ids),
+                    },
+                    "alias_listening",
+                )
+                return await self.async_step_capture_group_remote()
+            except FlowError as err:
+                errors["base"] = err.key
+            except ManagerError:
+                errors["base"] = "manager_unavailable"
+
+        return self.async_show_form(
+            step_id="add_group_remote",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_SHUTTER_IDS): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=self._shutter_alias_options(),
+                            multiple=True,
+                        )
+                    )
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_capture_group_remote(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Confirm capture, then atomically store the mapping in the ESP."""
+        if not self._alias_shutter_ids:
+            return await self.async_step_add_group_remote()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if not user_input.get(CONF_REMOTE_PRESSED):
+                errors["base"] = "press_group_remote_first"
+            else:
+                try:
+                    status = await self._runtime.async_call(
+                        "remote_alias",
+                        {"action": "query", "remote": "", "slots": ""},
+                        "alias_remote_detected",
+                    )
+                    remote = _normalize_remote(status.get("remote"))
+                    if not remote:
+                        raise FlowError("group_remote_not_detected")
+
+                    # Adding an already-known group extends it. Removing
+                    # shutters is deliberately reserved for the edit flow.
+                    selected = set(self._alias_shutter_ids)
+                    for alias in self._remote_aliases():
+                        if alias[CONF_REMOTE] == remote:
+                            selected.update(alias[CONF_SHUTTER_IDS])
+                    self._alias_shutter_ids = sorted(selected)
+                    await self._runtime.async_call(
+                        "remote_alias",
+                        {
+                            "action": "set",
+                            "remote": remote,
+                            "slots": self._slots_csv(self._alias_shutter_ids),
+                        },
+                        "alias_saved",
+                    )
+                    return self._save_remote_alias(
+                        remote, self._alias_shutter_ids
+                    )
+                except FlowError as err:
+                    errors["base"] = err.key
+                except ManagerRejected as err:
+                    if err.detail == "remote_alias_not_detected":
+                        errors["base"] = "group_remote_not_detected"
+                        try:
+                            await self._runtime.async_call(
+                                "remote_alias",
+                                {
+                                    "action": "discover",
+                                    "remote": "",
+                                    "slots": self._slots_csv(
+                                        self._alias_shutter_ids
+                                    ),
+                                },
+                                "alias_listening",
+                            )
+                        except ManagerError:
+                            errors["base"] = "manager_unavailable"
+                    else:
+                        errors["base"] = "manager_unavailable"
+                except ManagerError:
+                    errors["base"] = "manager_unavailable"
+
+        return self.async_show_form(
+            step_id="capture_group_remote",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_REMOTE_PRESSED, default=False): bool}
+            ),
+            errors=errors,
+            description_placeholders={
+                "count": str(len(self._alias_shutter_ids))
+            },
+        )
+
+    async def async_step_edit_group_remote(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Choose a stored group identity whose membership will be changed."""
+        aliases = self._remote_aliases()
+        if not aliases:
+            return self.async_abort(reason="no_group_remotes")
+        if user_input is not None:
+            self._alias_remote = _normalize_remote(user_input[CONF_GROUP_REMOTE])
+            return await self.async_step_group_remote_targets()
+        return self.async_show_form(
+            step_id="edit_group_remote",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_GROUP_REMOTE): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=self._group_remote_options()
+                        )
+                    )
+                }
+            ),
+        )
+
+    async def async_step_group_remote_targets(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Replace the complete shutter membership of one group identity."""
+        alias = next(
+            (
+                item
+                for item in self._remote_aliases()
+                if item[CONF_REMOTE] == self._alias_remote
+            ),
+            None,
+        )
+        if alias is None:
+            return self.async_abort(reason="no_group_remotes")
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                shutter_ids = self._selected_shutter_ids(
+                    user_input.get(CONF_SHUTTER_IDS)
+                )
+                await self._runtime.async_call(
+                    "remote_alias",
+                    {
+                        "action": "set",
+                        "remote": self._alias_remote,
+                        "slots": self._slots_csv(shutter_ids),
+                    },
+                    "alias_saved",
+                )
+                return self._save_remote_alias(
+                    self._alias_remote, shutter_ids
+                )
+            except FlowError as err:
+                errors["base"] = err.key
+            except ManagerError:
+                errors["base"] = "manager_unavailable"
+
+        current = [
+            shutter_id
+            for shutter_id in alias[CONF_SHUTTER_IDS]
+            if any(
+                option["value"] == shutter_id
+                for option in self._shutter_alias_options()
+            )
+        ]
+        return self.async_show_form(
+            step_id="group_remote_targets",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_SHUTTER_IDS, default=current
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=self._shutter_alias_options(),
+                            multiple=True,
+                        )
+                    )
+                }
+            ),
+            errors=errors,
+            description_placeholders={"remote": self._alias_remote},
+        )
+
+    async def async_step_remove_group_remote(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Remove one receive-only group mapping without transmitting RF."""
+        aliases = self._remote_aliases()
+        if not aliases:
+            return self.async_abort(reason="no_group_remotes")
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            remote = _normalize_remote(user_input[CONF_GROUP_REMOTE])
+            if not user_input.get(CONF_CONFIRM_REMOVE):
+                errors["base"] = "confirm_group_remote_removal"
+            else:
+                try:
+                    await self._runtime.async_call(
+                        "remote_alias",
+                        {"action": "remove", "remote": remote, "slots": ""},
+                        "alias_removed",
+                    )
+                    remaining = [
+                        alias
+                        for alias in aliases
+                        if alias[CONF_REMOTE] != remote
+                    ]
+                    return self.async_create_entry(
+                        title="",
+                        data={
+                            **self.config_entry.options,
+                            CONF_REMOTE_ALIASES: remaining,
+                        },
+                    )
+                except ManagerError:
+                    errors["base"] = "manager_unavailable"
+
+        return self.async_show_form(
+            step_id="remove_group_remote",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_GROUP_REMOTE): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=self._group_remote_options()
+                        )
+                    ),
+                    vol.Required(CONF_CONFIRM_REMOVE, default=False): bool,
+                }
+            ),
+            errors=errors,
+        )
+
     async def async_step_finish_setup(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
@@ -908,7 +1283,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 "enabled": is_venetian,
                 "tilt_steps": int(self._draft.get(CONF_TILT_STEPS, 12)),
                 "tilt_inverted": bool(
-                    self._draft.get(CONF_TILT_INVERTED, False)
+                    self._draft.get(CONF_TILT_INVERTED, True)
                 ),
                 "my_tilt_step": int(
                     self._draft.get(CONF_MY_TILT_STEP, 6)
