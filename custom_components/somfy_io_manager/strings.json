@@ -33,19 +33,23 @@
       },
       "add_shutter": {
         "title": "New independently controlled shutter",
-        "description": "Choose the initial firmware slot, shutter name, area, and time-based position calibration. The slot can be changed later. A new controller identity and AES key are generated securely inside the ESP; they are never shown in the UI.",
+        "description": "Choose the initial firmware slot, shutter name, area, and calibration. For a Venetian blind, turn the wheel fully counterclockwise, count only the detents that move the slats to the clockwise endpoint, and enter the saved MY slat step measured from that counterclockwise endpoint. Do not count endpoint-check clicks. The slot can be changed later. A new controller identity and AES key are generated securely inside the ESP; they are never shown in the UI.",
         "data": {
           "slot": "Initial firmware slot number",
           "name": "Shutter name",
           "area_id": "Area",
           "open_seconds": "Full opening time",
           "close_seconds": "Full closing time",
-          "my_percent": "MY position"
+          "my_percent": "MY position",
+          "cover_type": "Cover type",
+          "tilt_steps": "Counted tilt detents between endpoints",
+          "my_tilt_step": "Saved MY tilt step from counterclockwise endpoint",
+          "tilt_inverted": "Clockwise decreases tilt percentage"
         }
       },
       "capture_remote": {
         "title": "Capture the shutter's existing remote",
-        "description": "Slot {slot} is listening for 30 seconds. Briefly press OPEN or CLOSE once on the physical remote that already controls this shutter. Do not press PROG yet. Then tick the box and submit.",
+        "description": "Slot {slot} is listening for 120 seconds. Briefly press OPEN or CLOSE once on the physical remote that already controls this shutter. Do not press PROG yet. Then tick the box and submit.",
         "data": {
           "remote_pressed": "I pressed OPEN or CLOSE"
         }
@@ -74,7 +78,11 @@
           "area_id": "Area",
           "open_seconds": "Full opening time",
           "close_seconds": "Full closing time",
-          "my_percent": "MY position"
+          "my_percent": "MY position",
+          "cover_type": "Cover type",
+          "tilt_steps": "Counted tilt detents between endpoints",
+          "my_tilt_step": "Saved MY tilt step from counterclockwise endpoint",
+          "tilt_inverted": "Clockwise decreases tilt percentage"
         }
       },
       "resume_attempt": {
@@ -109,11 +117,15 @@
       },
       "calibration_values": {
         "title": "Position calibration",
-        "description": "Enter measured end-to-end movement times. MY is the approximate cover percentage used by Home Assistant's position model; the radio still recalls the motor's native stored favourite.",
+        "description": "Enter measured end-to-end movement times. MY is the approximate cover percentage used by Home Assistant's height model; the radio still recalls the motor's native favourite. For a Venetian blind, also enter the saved MY slat step counted clockwise from the counterclockwise endpoint.",
         "data": {
           "open_seconds": "Full opening time",
           "close_seconds": "Full closing time",
-          "my_percent": "MY position"
+          "my_percent": "MY position",
+          "cover_type": "Cover type",
+          "tilt_steps": "Counted tilt detents between endpoints",
+          "my_tilt_step": "Saved MY tilt step from counterclockwise endpoint",
+          "tilt_inverted": "Clockwise decreases tilt percentage"
         }
       },
       "finish_setup": {
@@ -126,10 +138,12 @@
     },
     "error": {
       "invalid_name": "Enter a shutter name.",
+      "invalid_cover_type": "Choose a supported cover type.",
+      "invalid_my_tilt_step": "The MY tilt step must be between zero and the full tilt detent count.",
       "slot_entity_missing": "The generated ESPHome cover for this slot has not appeared yet. Wait for the bridge to reconnect, then submit again.",
       "manager_unavailable": "The ESPHome commissioning manager did not respond. Check that the bridge is online and its custom actions are enabled.",
       "press_remote_first": "Press OPEN or CLOSE on the physical remote before continuing.",
-      "remote_not_detected": "No matching remote press was captured. Listening has restarted for another 30 seconds.",
+      "remote_not_detected": "No matching remote press was captured. Listening has restarted for another 120 seconds.",
       "program_jog_required": "Confirm the first programming jog before a pairing frame can be sent.",
       "slot_not_active": "That firmware slot does not contain a confirmed active controller.",
       "cannot_discard_after_pairing": "This identity cannot be discarded because a pairing frame may already have reached the shutter.",
@@ -149,6 +163,12 @@
       "options": {
         "continue": "Continue safely",
         "discard": "Discard (only before pairing RF)"
+      }
+    },
+    "cover_type": {
+      "options": {
+        "shutter": "Roller shutter",
+        "venetian": "Venetian blind with tilt"
       }
     }
   }

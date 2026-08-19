@@ -29,19 +29,23 @@
       },
       "add_shutter": {
         "title": "Persiana nova amb control independent",
-        "description": "Tria la ranura inicial del firmware, el nom de la persiana, l'àrea i el calibratge de posició. La ranura es pot canviar més endavant. L'ESP genera de manera segura un identificador de controlador i una clau AES nous; no es mostren a la interfície.",
+        "description": "Tria la ranura inicial del firmware, el nom de la persiana, l'àrea i el calibratge. Per a una persiana veneciana, gira la roda del tot en sentit antihorari, compta només els clics que mouen les lames fins a l'extrem horari i introdueix el pas d'inclinació MY desat mesurat des de l'extrem antihorari. No comptis els clics per comprovar els extrems. La ranura es pot canviar més endavant. L'ESP genera de manera segura un identificador de controlador i una clau AES nous; no es mostren a la interfície.",
         "data": {
           "slot": "Número de ranura inicial del firmware",
           "name": "Nom de la persiana",
           "area_id": "Àrea",
           "open_seconds": "Temps d'obertura completa",
           "close_seconds": "Temps de tancament complet",
-          "my_percent": "Posició MY"
+          "my_percent": "Posició MY",
+          "cover_type": "Tipus de persiana",
+          "tilt_steps": "Clics d'inclinació comptats entre extrems",
+          "my_tilt_step": "Pas d'inclinació MY desat des de l'extrem antihorari",
+          "tilt_inverted": "El gir horari redueix el percentatge d'inclinació"
         }
       },
       "capture_remote": {
         "title": "Captura el comandament existent",
-        "description": "La ranura {slot} escolta durant 30 segons. Prem breument OBRIR o TANCAR una vegada al comandament físic que ja controla aquesta persiana. Encara no premis PROG. Després marca la casella i continua.",
+        "description": "La ranura {slot} escolta durant 120 segons. Prem breument OBRIR o TANCAR una vegada al comandament físic que ja controla aquesta persiana. Encara no premis PROG. Després marca la casella i continua.",
         "data": { "remote_pressed": "He premut OBRIR o TANCAR" }
       },
       "prepare_pairing": {
@@ -64,7 +68,11 @@
           "area_id": "Àrea",
           "open_seconds": "Temps d'obertura completa",
           "close_seconds": "Temps de tancament complet",
-          "my_percent": "Posició MY"
+          "my_percent": "Posició MY",
+          "cover_type": "Tipus de persiana",
+          "tilt_steps": "Clics d'inclinació comptats entre extrems",
+          "my_tilt_step": "Pas d'inclinació MY desat des de l'extrem antihorari",
+          "tilt_inverted": "El gir horari redueix el percentatge d'inclinació"
         }
       },
       "resume_attempt": {
@@ -94,11 +102,15 @@
       },
       "calibration_values": {
         "title": "Calibratge de posició",
-        "description": "Introdueix els temps mesurats entre finals de cursa. MY és el percentatge aproximat del model de Home Assistant; la ràdio continua recuperant el favorit natiu del motor.",
+        "description": "Introdueix els temps mesurats entre finals de cursa. MY és el percentatge aproximat del model d'alçada de Home Assistant; la ràdio continua recuperant el favorit natiu del motor. Per a una persiana veneciana, introdueix també el pas d'inclinació MY desat comptat en sentit horari des de l'extrem antihorari.",
         "data": {
           "open_seconds": "Temps d'obertura completa",
           "close_seconds": "Temps de tancament complet",
-          "my_percent": "Posició MY"
+          "my_percent": "Posició MY",
+          "cover_type": "Tipus de persiana",
+          "tilt_steps": "Clics d'inclinació comptats entre extrems",
+          "my_tilt_step": "Pas d'inclinació MY desat des de l'extrem antihorari",
+          "tilt_inverted": "El gir horari redueix el percentatge d'inclinació"
         }
       },
       "finish_setup": {
@@ -109,10 +121,12 @@
     },
     "error": {
       "invalid_name": "Introdueix un nom de persiana.",
+      "invalid_cover_type": "Tria un tipus de persiana compatible.",
+      "invalid_my_tilt_step": "El pas d'inclinació MY ha d'estar entre zero i el nombre total de clics d'inclinació.",
       "slot_entity_missing": "Encara no ha aparegut l'entitat ESPHome d'aquesta ranura. Espera que el pont es reconnecti i torna-ho a provar.",
       "manager_unavailable": "El gestor ESPHome no ha respost. Comprova que el pont estigui en línia i que tingui activades les accions personalitzades.",
       "press_remote_first": "Prem OBRIR o TANCAR al comandament físic abans de continuar.",
-      "remote_not_detected": "No s'ha capturat cap pulsació coincident. L'escolta s'ha reiniciat durant 30 segons.",
+      "remote_not_detected": "No s'ha capturat cap pulsació coincident. L'escolta s'ha reiniciat durant 120 segons.",
       "program_jog_required": "Confirma el primer moviment de programació abans d'enviar la vinculació.",
       "slot_not_active": "Aquesta ranura no conté cap controlador actiu confirmat.",
       "cannot_discard_after_pairing": "Aquesta identitat no es pot descartar perquè la trama de vinculació podria haver arribat a la persiana.",
@@ -132,6 +146,12 @@
       "options": {
         "continue": "Continua de manera segura",
         "discard": "Descarta (només abans d'enviar vinculació)"
+      }
+    },
+    "cover_type": {
+      "options": {
+        "shutter": "Persiana enrotllable",
+        "venetian": "Persiana veneciana amb inclinació"
       }
     }
   }

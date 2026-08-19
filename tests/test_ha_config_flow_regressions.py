@@ -176,3 +176,23 @@ def test_moving_a_shutter_disables_the_old_transport_cover():
 def test_move_response_accepts_source_errors_and_destination_success():
     assert '("slot", "target_slot") if suffix == "move"' in RUNTIME_SOURCE
     assert 'status.get("slot") not in requested_slots' in RUNTIME_SOURCE
+
+
+def test_venetian_gui_configures_native_tilt_without_affecting_normal_shutters():
+    cover_source = (INTEGRATION_ROOT / "cover.py").read_text()
+    assert '"venetian"' in FLOW_SOURCE
+    assert '"venetian_configured"' in FLOW_SOURCE
+    assert '"tilt_steps"' in (INTEGRATION_ROOT / "const.py").read_text()
+    assert '"my_tilt_step"' in (INTEGRATION_ROOT / "const.py").read_text()
+    assert '"my_tilt_step": int(' in FLOW_SOURCE
+    assert "CoverEntityFeature.SET_TILT_POSITION" in cover_source
+    assert "CoverEntityFeature.STOP_TILT" in cover_source
+    assert "CoverEntityFeature.OPEN_TILT" not in cover_source
+    assert "CoverEntityFeature.CLOSE_TILT" not in cover_source
+    assert "async_set_cover_tilt_position" in cover_source
+    assert "COVER_TYPE_SHUTTER" in cover_source
+
+
+def test_venetian_physical_remote_events_are_friendly():
+    assert '"0XF00D": "Tilt clockwise"' in SENSOR_SOURCE
+    assert '"0XF00E": "Tilt counterclockwise"' in SENSOR_SOURCE

@@ -30,6 +30,8 @@ _REMOTE_COMMAND_NAMES = {
     "0XC800": "Close",
     "0XD200": "Stop/MY",
     "0XD800": "MY",
+    "0XF00D": "Tilt clockwise",
+    "0XF00E": "Tilt counterclockwise",
 }
 
 

@@ -20,10 +20,14 @@ registered trademark of its respective owner.
 
 ## Status and compatibility
 
-The io-homecontrol **1W path is hardware validated**. Tests cover pairing,
+The io-homecontrol **1W roller-shutter path is hardware validated**. Tests cover pairing,
 independent open/close/stop/MY control, intermediate positioning, repeated
 physical-remote events, slot management, encrypted recovery, and persistence
 after reboot.
+
+The Venetian-blind path has also been hardware validated with a Situo 5
+Variation A/M io Pure II. It uses the same 1W pairing and controller identity
+as an ordinary shutter, with native step-based slat tilt added on top.
 
 The bidirectional 2W path is not currently supported by this manager.
 
@@ -46,10 +50,14 @@ installation.
 
 - One Home Assistant device per physical shutter.
 - Native cover controls for open, close, stop, and estimated percentage.
+- Native Venetian tilt controls with calibrated detents, direction inversion,
+  and endpoint resynchronization.
 - Dedicated MY/favourite-position button.
 - Friendly physical-remote event sensor showing Open, Close, Stop/MY, or MY.
 - Physical-remote synchronization of the estimated cover state.
 - Independent opening time, closing time, and MY calibration per shutter.
+- Per-Venetian-blind tilt step count, wheel-direction calibration, and saved MY
+  slat step.
 - Twenty persistent firmware slots per bridge.
 - Explicit slot selection when adding or importing a shutter.
 - Safe moves to empty slots and direct swaps between occupied slots.
@@ -174,7 +182,7 @@ Each active shutter becomes one Somfy device containing:
 
 | Entity | Purpose |
 | --- | --- |
-| Cover | Open, close, stop, current estimated position, and set position. |
+| Cover | Open, close, stop, and estimated position. Venetian devices also expose native slat tilt. |
 | MY position button | Recall the motor's native favourite position. |
 | Detected remote sensor | Record every decoded physical-remote press with sanitized diagnostic attributes. |
 
@@ -188,7 +196,34 @@ Open **Configure → Pair a new shutter**, select a firmware slot, and enter:
 - shutter name and optional Home Assistant area;
 - full opening time;
 - full closing time;
-- approximate MY percentage.
+- approximate MY percentage;
+- cover type; for a Venetian blind, the wheel detents that actually move the
+  slats between its two endpoints and whether clockwise should decrease the HA
+  tilt percentage;
+- for a Venetian blind, the saved MY slat step counted clockwise from the
+  counterclockwise endpoint. Do not count an extra click used only to verify an
+  endpoint.
+
+For Venetian blinds, a 0% or 100% tilt request always performs one complete
+calibrated sweep plus a small endpoint margin. This establishes a known
+endpoint even after initial pairing or if the restored estimate no longer
+matches the physical slats. Intermediate percentages send only the exact
+number of required detents, are rounded to the nearest reachable position, and
+finish by reporting that reachable position rather than the original request.
+
+The tilt percentage describes the physical wheel range, not how much light is
+passing through the slats. Both ends of that range can be closed in opposite
+directions; on the tested blind, the horizontal fully open attitude is the
+midpoint. For this reason the entity exposes percentage and stop-tilt controls,
+but no ambiguous tilt-open or tilt-close action.
+
+Lift movement also changes the physical slats. OPEN immediately puts them in
+the horizontal attitude and CLOSE in the clockwise closed attitude; STOP leaves
+that new attitude in place. A tilt request during lift movement stops the lift,
+applies the tilt, and never resumes the interrupted height movement. Native MY
+temporarily uses the appropriate travel attitude and restores the motor's saved
+MY tilt after the height movement finishes; the configured MY slat step keeps
+Home Assistant's estimate synchronized without extra wheel transmissions.
 
 The wizard then asks you to:
 

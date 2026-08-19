@@ -15,9 +15,11 @@ from .const import (
     CONF_AREA_ID,
     CONF_BACKUP_ENTITY_ID,
     CONF_CLOSE_SECONDS,
+    CONF_COVER_TYPE,
     CONF_DEVICE_NAME,
     CONF_ESPHOME_ENTRY_ID,
     CONF_MY_PERCENT,
+    CONF_MY_TILT_STEP,
     CONF_NAME,
     CONF_OPEN_SECONDS,
     CONF_SHUTTERS,
@@ -25,6 +27,10 @@ from .const import (
     CONF_STATE,
     CONF_STATUS_ENTITY_ID,
     CONF_TARGET_SLOT,
+    CONF_TILT_INVERTED,
+    CONF_TILT_STEPS,
+    COVER_TYPE_SHUTTER,
+    COVER_TYPE_VENETIAN,
     DATA_RUNTIME,
     DOMAIN,
     MAX_SHUTTER_SLOTS,
@@ -117,6 +123,7 @@ def _eligible_bridges(hass: HomeAssistant) -> dict[str, dict[str, str]]:
                 "restore",
                 "move",
                 "swap",
+                "venetian",
             )
         ):
             continue
@@ -159,6 +166,26 @@ def _details_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
         vol.Required(
             CONF_MY_PERCENT, default=defaults.get(CONF_MY_PERCENT, 50.0)
         ): _number_selector(0.0, 100.0, 1.0, "%"),
+        vol.Required(
+            CONF_COVER_TYPE,
+            default=defaults.get(CONF_COVER_TYPE, COVER_TYPE_SHUTTER),
+        ): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[COVER_TYPE_SHUTTER, COVER_TYPE_VENETIAN],
+                translation_key="cover_type",
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        ),
+        vol.Required(
+            CONF_TILT_STEPS, default=defaults.get(CONF_TILT_STEPS, 12)
+        ): _number_selector(1, 254, 1),
+        vol.Required(
+            CONF_MY_TILT_STEP, default=defaults.get(CONF_MY_TILT_STEP, 6)
+        ): _number_selector(0, 254, 1),
+        vol.Required(
+            CONF_TILT_INVERTED,
+            default=defaults.get(CONF_TILT_INVERTED, False),
+        ): selector.BooleanSelector(),
     }
     return vol.Schema(fields)
 
@@ -194,6 +221,24 @@ def _validate_details(user_input: dict[str, Any]) -> dict[str, Any]:
     details[CONF_OPEN_SECONDS] = float(details[CONF_OPEN_SECONDS])
     details[CONF_CLOSE_SECONDS] = float(details[CONF_CLOSE_SECONDS])
     details[CONF_MY_PERCENT] = float(details[CONF_MY_PERCENT])
+    details[CONF_COVER_TYPE] = str(
+        details.get(CONF_COVER_TYPE, COVER_TYPE_SHUTTER)
+    )
+    if details[CONF_COVER_TYPE] not in {
+        COVER_TYPE_SHUTTER,
+        COVER_TYPE_VENETIAN,
+    }:
+        raise FlowError("invalid_cover_type")
+    details[CONF_TILT_STEPS] = int(details.get(CONF_TILT_STEPS, 12))
+    details[CONF_MY_TILT_STEP] = int(details.get(CONF_MY_TILT_STEP, 6))
+    details[CONF_TILT_INVERTED] = bool(
+        details.get(CONF_TILT_INVERTED, False)
+    )
+    if (
+        details[CONF_COVER_TYPE] == COVER_TYPE_VENETIAN
+        and details[CONF_MY_TILT_STEP] > details[CONF_TILT_STEPS]
+    ):
+        raise FlowError("invalid_my_tilt_step")
     return details
 
 
@@ -655,18 +700,34 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
     ) -> config_entries.ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            self._draft.update(
-                {
-                    CONF_OPEN_SECONDS: float(user_input[CONF_OPEN_SECONDS]),
-                    CONF_CLOSE_SECONDS: float(user_input[CONF_CLOSE_SECONDS]),
-                    CONF_MY_PERCENT: float(user_input[CONF_MY_PERCENT]),
-                }
-            )
-            try:
-                await self._async_calibrate()
-                return self._save_active()
-            except ManagerError:
-                errors["base"] = "manager_unavailable"
+            cover_type = str(user_input[CONF_COVER_TYPE])
+            tilt_steps = int(user_input[CONF_TILT_STEPS])
+            my_tilt_step = int(user_input[CONF_MY_TILT_STEP])
+            if (
+                cover_type == COVER_TYPE_VENETIAN
+                and my_tilt_step > tilt_steps
+            ):
+                errors["base"] = "invalid_my_tilt_step"
+            else:
+                self._draft.update(
+                    {
+                        CONF_OPEN_SECONDS: float(user_input[CONF_OPEN_SECONDS]),
+                        CONF_CLOSE_SECONDS: float(user_input[CONF_CLOSE_SECONDS]),
+                        CONF_MY_PERCENT: float(user_input[CONF_MY_PERCENT]),
+                        CONF_COVER_TYPE: cover_type,
+                        CONF_TILT_STEPS: tilt_steps,
+                        CONF_MY_TILT_STEP: my_tilt_step,
+                        CONF_TILT_INVERTED: bool(
+                            user_input[CONF_TILT_INVERTED]
+                        ),
+                    }
+                )
+                try:
+                    await self._async_calibrate()
+                    await self._async_configure_venetian()
+                    return self._save_active()
+                except ManagerError:
+                    errors["base"] = "manager_unavailable"
         return self.async_show_form(
             step_id="calibration_values",
             data_schema=vol.Schema(
@@ -683,6 +744,30 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                         CONF_MY_PERCENT,
                         default=self._draft[CONF_MY_PERCENT],
                     ): _number_selector(0.0, 100.0, 1.0, "%"),
+                    vol.Required(
+                        CONF_COVER_TYPE,
+                        default=self._draft.get(
+                            CONF_COVER_TYPE, COVER_TYPE_SHUTTER
+                        ),
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[COVER_TYPE_SHUTTER, COVER_TYPE_VENETIAN],
+                            translation_key="cover_type",
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Required(
+                        CONF_TILT_STEPS,
+                        default=self._draft.get(CONF_TILT_STEPS, 12),
+                    ): _number_selector(1, 254, 1),
+                    vol.Required(
+                        CONF_MY_TILT_STEP,
+                        default=self._draft.get(CONF_MY_TILT_STEP, 6),
+                    ): _number_selector(0, 254, 1),
+                    vol.Required(
+                        CONF_TILT_INVERTED,
+                        default=self._draft.get(CONF_TILT_INVERTED, False),
+                    ): selector.BooleanSelector(),
                 }
             ),
             errors=errors,
@@ -786,6 +871,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         try:
             ensure_shutter_id(self._draft)
             await self._async_calibrate()
+            await self._async_configure_venetian()
             await self._runtime.async_export_backup(self._slot)
             self._prepare_transport_entity()
         except ManagerError:
@@ -808,6 +894,27 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 "my_percent": self._draft[CONF_MY_PERCENT],
             },
             "calibrated",
+        )
+
+    async def _async_configure_venetian(self) -> None:
+        is_venetian = (
+            self._draft.get(CONF_COVER_TYPE, COVER_TYPE_SHUTTER)
+            == COVER_TYPE_VENETIAN
+        )
+        await self._runtime.async_call(
+            "venetian",
+            {
+                "slot": self._slot,
+                "enabled": is_venetian,
+                "tilt_steps": int(self._draft.get(CONF_TILT_STEPS, 12)),
+                "tilt_inverted": bool(
+                    self._draft.get(CONF_TILT_INVERTED, False)
+                ),
+                "my_tilt_step": int(
+                    self._draft.get(CONF_MY_TILT_STEP, 6)
+                ),
+            },
+            "venetian_configured",
         )
 
     def _prepare_transport_entity(self) -> None:

@@ -122,6 +122,7 @@ class SomfyIOManagerRuntime:
             "pair_sent",
             "active",
             "calibrated",
+            "venetian_configured",
             "restored",
             "moved",
         }:

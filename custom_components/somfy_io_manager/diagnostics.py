@@ -11,13 +11,17 @@ from homeassistant.core import HomeAssistant
 from .const import (
     CONF_BACKUP_ENTITY_ID,
     CONF_CLOSE_SECONDS,
+    CONF_COVER_TYPE,
     CONF_DEVICE_NAME,
     CONF_MY_PERCENT,
+    CONF_MY_TILT_STEP,
     CONF_OPEN_SECONDS,
     CONF_SHUTTERS,
     CONF_SLOT,
     CONF_STATE,
     CONF_STATUS_ENTITY_ID,
+    CONF_TILT_INVERTED,
+    CONF_TILT_STEPS,
     DATA_RUNTIME,
     DOMAIN,
     MANAGER_API_VERSION,
@@ -33,6 +37,7 @@ _SERVICE_SUFFIXES = (
     "restore",
     "move",
     "swap",
+    "venetian",
 )
 _SAFE_STATUS_FIELDS = ("v", "event", "action", "slot", "state", "rssi")
 
@@ -126,6 +131,10 @@ def _shutter_diagnostics(
                 "open_seconds": shutter.get(CONF_OPEN_SECONDS),
                 "close_seconds": shutter.get(CONF_CLOSE_SECONDS),
                 "my_percent": shutter.get(CONF_MY_PERCENT),
+                "cover_type": shutter.get(CONF_COVER_TYPE, "shutter"),
+                "tilt_steps": shutter.get(CONF_TILT_STEPS),
+                "my_tilt_step": shutter.get(CONF_MY_TILT_STEP),
+                "tilt_inverted": shutter.get(CONF_TILT_INVERTED),
                 "encrypted_recovery_available": (
                     runtime is not None and runtime.backup_for_slot(slot) is not None
                 ),

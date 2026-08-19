@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from homeassistant.components.cover import (
     ATTR_POSITION,
+    ATTR_TILT_POSITION,
     CoverDeviceClass,
     CoverEntity,
     CoverEntityFeature,
@@ -18,9 +19,12 @@ from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import (
     CONF_AREA_ID,
+    CONF_COVER_TYPE,
     CONF_SHUTTERS,
     CONF_SLOT,
     CONF_STATE,
+    COVER_TYPE_SHUTTER,
+    COVER_TYPE_VENETIAN,
     DATA_RUNTIME,
     DOMAIN,
     STATE_ACTIVE,
@@ -64,15 +68,18 @@ async def async_setup_entry(
 class SomfyManagedCover(CoverEntity):
     """Expose a hidden ESPHome slot cover as a Somfy shutter entity."""
 
-    _attr_device_class = CoverDeviceClass.SHUTTER
     _attr_has_entity_name = True
     _attr_name = None
     _attr_should_poll = False
-    _attr_supported_features = (
+    _BASE_FEATURES = (
         CoverEntityFeature.OPEN
         | CoverEntityFeature.CLOSE
         | CoverEntityFeature.STOP
         | CoverEntityFeature.SET_POSITION
+    )
+    _TILT_FEATURES = (
+        CoverEntityFeature.STOP_TILT
+        | CoverEntityFeature.SET_TILT_POSITION
     )
 
     def __init__(
@@ -86,6 +93,18 @@ class SomfyManagedCover(CoverEntity):
         shutter_id = ensure_shutter_id(shutter)
         self._runtime = runtime
         self._slot = int(shutter[CONF_SLOT])
+        self._is_venetian = (
+            shutter.get(CONF_COVER_TYPE, COVER_TYPE_SHUTTER)
+            == COVER_TYPE_VENETIAN
+        )
+        self._attr_device_class = (
+            CoverDeviceClass.BLIND
+            if self._is_venetian
+            else CoverDeviceClass.SHUTTER
+        )
+        self._attr_supported_features = self._BASE_FEATURES
+        if self._is_venetian:
+            self._attr_supported_features |= self._TILT_FEATURES
         self._area_id = shutter.get(CONF_AREA_ID)
         self._transport_entity_id = transport_entity_id
         self._attr_unique_id = f"{entry.entry_id}-{shutter_id}-cover"
@@ -135,6 +154,11 @@ class SomfyManagedCover(CoverEntity):
                 self._attr_current_cover_position = max(
                     0, min(100, round(float(position)))
                 )
+            tilt = state.attributes.get("current_tilt_position")
+            if self._is_venetian and isinstance(tilt, (int, float)):
+                self._attr_current_cover_tilt_position = max(
+                    0, min(100, round(float(tilt)))
+                )
         if write:
             self.async_write_ha_state()
 
@@ -164,3 +188,21 @@ class SomfyManagedCover(CoverEntity):
     async def async_set_cover_position(self, **kwargs) -> None:
         """Move the shutter to an estimated percentage."""
         await self._async_control("position", float(kwargs[ATTR_POSITION]))
+
+    async def async_open_cover_tilt(self, **kwargs) -> None:
+        """Rotate Venetian slats to the configured open endpoint."""
+        await self._async_control("tilt_position", 100.0)
+
+    async def async_close_cover_tilt(self, **kwargs) -> None:
+        """Rotate Venetian slats to the configured closed endpoint."""
+        await self._async_control("tilt_position", 0.0)
+
+    async def async_stop_cover_tilt(self, **kwargs) -> None:
+        """Cancel any remaining queued slat detents."""
+        await self._async_control("tilt_stop")
+
+    async def async_set_cover_tilt_position(self, **kwargs) -> None:
+        """Rotate Venetian slats to an estimated percentage."""
+        await self._async_control(
+            "tilt_position", float(kwargs[ATTR_TILT_POSITION])
+        )
