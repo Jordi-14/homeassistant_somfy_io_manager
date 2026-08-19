@@ -75,7 +75,7 @@ The project is deliberately split into two repositories:
 
 | Layer | Repository | Responsibility |
 | --- | --- | --- |
-| ESPHome | [`Jordi-14/esphome_somfy`](https://github.com/Jordi-14/esphome_somfy/tree/iohc-hardware-control) | Radio framing, receive/transmit, rolling codes, NVS identities, slot state, position timing, encrypted export, and manager API. |
+| ESPHome | [`Jordi-14/esphome_somfy`](https://github.com/Jordi-14/esphome_somfy/tree/iohc-venetian-tilt-discovery) | Radio framing, receive/transmit, rolling codes, NVS identities, slot state, position timing, encrypted export, and manager API. |
 | Home Assistant | This repository | Config and options flows, per-shutter devices and entities, diagnostics, encrypted-snapshot retention, and safe slot workflows. |
 
 The firmware work is proposed upstream in
@@ -135,7 +135,7 @@ api:
   custom_services: true
 
 external_components:
-  - source: github://Jordi-14/esphome_somfy@iohc-hardware-control
+  - source: github://Jordi-14/esphome_somfy@iohc-venetian-tilt-discovery
     components: [somfy, somfy_iohc_manager]
 
 text_sensor:
