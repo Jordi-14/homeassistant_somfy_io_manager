@@ -61,12 +61,14 @@ CONF_PROGRAM_JOGGED = "program_jogged"
 CONF_PAIRING_JOGGED = "pairing_jogged"
 CONF_ATTEMPT = "attempt"
 CONF_RESUME_ACTION = "resume_action"
+CONF_RETRY_CONTROLLER_FAILED = "retry_controller_failed"
 CONF_RETRY_SETUP = "retry_setup"
 CONF_GROUP_REMOTE = "group_remote"
 CONF_CONFIRM_REMOVE = "confirm_remove"
 
 ACTION_CONTINUE = "continue"
 ACTION_DISCARD = "discard"
+ACTION_RETRY = "retry"
 
 
 class FlowError(Exception):
@@ -674,7 +676,8 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                     "slot",
                 )
                 state = status.get("state")
-                if user_input[CONF_RESUME_ACTION] == ACTION_DISCARD:
+                resume_action = user_input[CONF_RESUME_ACTION]
+                if resume_action == ACTION_DISCARD:
                     if state != "staged":
                         raise FlowError("cannot_discard_after_pairing")
                     await self._runtime.async_call(
@@ -686,6 +689,12 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                     return self.async_create_entry(
                         title="", data=self.config_entry.options
                     )
+                if resume_action == ACTION_RETRY:
+                    if state != "pair_sent":
+                        raise FlowError("attempt_not_retryable")
+                    if status.get("pair_retry") is not True:
+                        raise FlowError("firmware_retry_unavailable")
+                    return await self.async_step_retry_pairing()
                 if state == "staged":
                     await self._runtime.async_call(
                         "commission",
@@ -722,13 +731,63 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                         CONF_RESUME_ACTION, default=ACTION_CONTINUE
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=[ACTION_CONTINUE, ACTION_DISCARD],
+                            options=[ACTION_CONTINUE, ACTION_RETRY, ACTION_DISCARD],
                             translation_key="resume_action",
                         )
                     ),
                 }
             ),
             errors=errors,
+        )
+
+    async def async_step_retry_pairing(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Explicitly resend pairing for one preserved uncertain identity."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if not user_input.get(CONF_RETRY_CONTROLLER_FAILED):
+                errors["base"] = "retry_controller_test_required"
+            elif not user_input.get(CONF_PROGRAM_JOGGED):
+                errors["base"] = "program_jog_required"
+            else:
+                try:
+                    await self._runtime.async_call(
+                        "commission",
+                        {"action": "retry_arm", "slot": self._slot},
+                        "armed",
+                    )
+                    await self._runtime.async_call(
+                        "commission",
+                        {"action": "pair", "slot": self._slot},
+                        "pair_sent",
+                    )
+                except ManagerRejected as err:
+                    errors["base"] = (
+                        "firmware_retry_unavailable"
+                        if err.detail == "unknown_action"
+                        else "manager_unavailable"
+                    )
+                except ManagerError:
+                    errors["base"] = "manager_unavailable"
+                else:
+                    self._draft[CONF_STATE] = STATE_UNCERTAIN
+                    self._runtime.async_remember_pending(self._slot, self._draft)
+                    return await self.async_step_confirm_pairing()
+
+        return self.async_show_form(
+            step_id="retry_pairing",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_RETRY_CONTROLLER_FAILED, default=False): bool,
+                    vol.Required(CONF_PROGRAM_JOGGED, default=False): bool,
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "name": self._draft.get(CONF_NAME, "shutter"),
+                "slot": str((self._slot or 0) + 1),
+            },
         )
 
     async def async_step_edit_calibration(

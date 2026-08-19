@@ -83,6 +83,14 @@
         "description": "Una identitat preparada només es pot descartar abans d'enviar ràdio de vinculació. Després es conserva per no consumir una altra ranura del receptor ni perdre un controlador possiblement vinculat.",
         "data": { "attempt": "Intent", "resume_action": "Acció" }
       },
+      "retry_pairing": {
+        "title": "Torna a provar la identitat de controlador conservada",
+        "description": "Primer prova la ranura {slot} des de Home Assistant. Si ja controla **{name}**, torna enrere i confirma la vinculació. Si no la controla, fes servir el comandament físic original per tornar a posar només aquesta persiana en mode de programació i espera el primer moviment. En enviar, es retransmet una sola vegada exactament la mateixa identitat de controlador; no se'n crea cap de nova.",
+        "data": {
+          "retry_controller_failed": "He provat la ranura conservada i no controla la persiana",
+          "program_jogged": "La persiana correcta ha tornat a fer el primer moviment de PROG"
+        }
+      },
       "edit_calibration": {
         "title": "Tria una persiana",
         "data": { "slot": "Persiana" }
@@ -174,6 +182,9 @@
       "slot_not_active": "Aquesta ranura no conté cap controlador actiu confirmat.",
       "cannot_discard_after_pairing": "Aquesta identitat no es pot descartar perquè la trama de vinculació podria haver arribat a la persiana.",
       "attempt_not_resumable": "La ranura del firmware no es troba en un estat recuperable.",
+      "attempt_not_retryable": "Només es pot reintentar un intent incert que ja hagi enviat la vinculació per ràdio.",
+      "firmware_retry_unavailable": "El firmware d'aquest pont no permet reintents protegits amb la mateixa identitat. Instal·la el firmware corresponent i torna-ho a provar.",
+      "retry_controller_test_required": "Confirma que has provat la ranura conservada i que no controla la persiana abans de repetir la vinculació.",
       "same_slot": "Tria una ranura de destinació diferent.",
       "target_slot_not_empty": "La ranura de destinació del firmware ja està ocupada. Fes servir Intercanvia dues ranures de persiana quan totes dues continguin persianes gestionades.",
       "both_slots_must_be_active": "Totes dues ranures del firmware han de contenir persianes actives confirmades."
@@ -189,6 +200,7 @@
     "resume_action": {
       "options": {
         "continue": "Continua de manera segura",
+        "retry": "Torna a provar la mateixa identitat de controlador",
         "discard": "Descarta (només abans d'enviar vinculació)"
       }
     },

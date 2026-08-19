@@ -34,7 +34,7 @@ The bidirectional 2W path is not currently supported by this manager.
 | Integration | Manager API | Home Assistant | ESPHome | Status |
 | --- | ---: | ---: | ---: | --- |
 | 0.6.x | 1 | 2026.7+ | 2026.7.4 tested | 1W roller shutters hardware validated |
-| 0.7.0b4 | 1 | 2026.7+ | 2026.7.4 tested | 1W roller and Venetian shutters hardware validated |
+| 0.7.0b5 | 1 | 2026.7+ | 2026.7.4 tested | 1W roller and Venetian shutters hardware validated |
 
 Validated bridge hardware:
 
@@ -138,7 +138,7 @@ api:
   custom_services: true
 
 external_components:
-  - source: github://Jordi-14/esphome_somfy@iohc-venetian-tilt-discovery
+  - source: github://Jordi-14/esphome_somfy@46fa24824b768fae2d7e6aa8dc9be479afc409d4
     components: [somfy, somfy_iohc_manager]
 
 text_sensor:
@@ -321,8 +321,11 @@ power two bridges using the same restored controller identity: a rolling-code
 stream must have exactly one active owner.
 
 If commissioning is interrupted after a radio transmission, the options flow
-offers a safe resume or discard path. Follow that path instead of manually
-repeating pairing frames.
+preserves that controller identity. If the second jog did not occur and the
+preserved slot does not control the shutter, choose the protected same-identity
+retry, obtain a fresh first PROG jog with the original remote and let the wizard
+retransmit exactly once. Do not create another controller or manually repeat
+pairing frames.
 
 ## Troubleshooting
 

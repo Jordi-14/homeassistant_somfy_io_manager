@@ -96,6 +96,14 @@
           "resume_action": "Action"
         }
       },
+      "retry_pairing": {
+        "title": "Retry the preserved controller identity",
+        "description": "First test slot {slot} from Home Assistant. If it already controls **{name}**, go back and confirm the pairing instead. If it does not, use the original physical remote to put only this shutter into programming mode again and wait for the first jog. Submitting retransmits the exact same controller identity once; it does not create a new identity.",
+        "data": {
+          "retry_controller_failed": "I tested the preserved slot and it does not control the shutter",
+          "program_jogged": "The intended shutter performed the first PROG jog again"
+        }
+      },
       "edit_calibration": {
         "title": "Choose a shutter",
         "data": {
@@ -191,6 +199,9 @@
       "slot_not_active": "That firmware slot does not contain a confirmed active controller.",
       "cannot_discard_after_pairing": "This identity cannot be discarded because a pairing frame may already have reached the shutter.",
       "attempt_not_resumable": "The firmware slot is not in a resumable state.",
+      "attempt_not_retryable": "Only an uncertain attempt that already sent pairing RF can be retried.",
+      "firmware_retry_unavailable": "This bridge firmware does not support protected same-identity pairing retries. Install the matching firmware and try again.",
+      "retry_controller_test_required": "Confirm that you tested the preserved slot and it does not control the shutter before retrying pairing.",
       "same_slot": "Choose a different destination slot.",
       "target_slot_not_empty": "The destination firmware slot is already occupied. Use Swap two shutter slots when both slots contain managed shutters.",
       "both_slots_must_be_active": "Both firmware slots must contain confirmed active shutters."
@@ -206,6 +217,7 @@
     "resume_action": {
       "options": {
         "continue": "Continue safely",
+        "retry": "Retry the same controller identity",
         "discard": "Discard (only before pairing RF)"
       }
     },

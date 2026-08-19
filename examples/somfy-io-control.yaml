@@ -35,7 +35,7 @@ captive_portal:
 safe_mode:
 
 external_components:
-  - source: github://Jordi-14/esphome_somfy@iohc-hardware-control
+  - source: github://Jordi-14/esphome_somfy@46fa24824b768fae2d7e6aa8dc9be479afc409d4
     components: [somfy, somfy_iohc_manager]
 
 spi:

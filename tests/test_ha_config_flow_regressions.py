@@ -66,6 +66,23 @@ def test_import_can_move_to_a_definitive_slot_without_commissioning_rf():
     assert '"pair"' not in function
 
 
+def test_uncertain_pairing_retry_reuses_the_preserved_firmware_identity():
+    resume = FLOW_SOURCE.split("async def async_step_resume_attempt", 1)[1]
+    resume = resume.split("async def async_step_retry_pairing", 1)[0]
+    retry = FLOW_SOURCE.split("async def async_step_retry_pairing", 1)[1]
+    retry = retry.split("async def async_step_edit_calibration", 1)[0]
+
+    assert "ACTION_RETRY" in resume
+    assert 'state != "pair_sent"' in resume
+    assert 'status.get("pair_retry") is not True' in resume
+    assert '"action": "retry_arm"' in retry
+    assert '"action": "pair"' in retry
+    assert "CONF_RETRY_CONTROLLER_FAILED" in retry
+    assert "CONF_PROGRAM_JOGGED" in retry
+    assert '"stage"' not in retry
+    assert '"discard"' not in retry
+
+
 def test_new_pairing_and_future_moves_choose_explicit_slots():
     add = FLOW_SOURCE.split("async def async_step_add_shutter", 1)[1]
     add = add.split("async def async_step_capture_remote", 1)[0]

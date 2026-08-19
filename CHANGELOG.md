@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0b5
+
+- Add a protected retry path for an uncertain post-PROG pairing attempt.
+- Reuse the preserved controller identity, AES key and rolling-code stream
+  instead of creating another controller or consuming another firmware slot.
+- Require the user to verify that the preserved slot does not control the
+  shutter and to obtain a fresh first PROG jog before each retransmission.
+- Detect firmware without same-identity retry support and show a specific
+  update message instead of failing silently.
+
 ## 0.7.0b4
 
 - Decode the Situo Variation wheel's signed magnitude field so a large
