@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0b6
+
+- Queue simultaneous MY requests on the bridge so each shutter receives its
+  complete authenticated STOP/execute/press/release gesture without another
+  shutter's MY frames being interleaved.
+- Start the next queued shutter immediately after the release burst and a
+  short radio handoff gap, avoiding conservative delays in Home Assistant.
+- Coalesce duplicate pending MY targets and accept the firmware's explicit
+  queued acknowledgement.
+
 ## 0.7.0b5
 
 - Add a protected retry path for an uncertain post-PROG pairing attempt.

@@ -175,6 +175,14 @@ def test_shutter_controls_are_grouped_as_somfy_entities():
     assert "via_device" not in shared_entity
 
 
+def test_my_button_accepts_immediate_and_queued_firmware_acknowledgements():
+    root = Path(__file__).parent.parent
+    button_platform = (
+        root / "custom_components" / "somfy_io_manager" / "button.py"
+    ).read_text()
+    assert '{"command_sent", "command_queued"}' in button_platform
+
+
 def test_detected_remote_uses_friendly_actions_and_keeps_diagnostics():
     assert '"0X0000": "Open"' in SENSOR_SOURCE
     assert '"0XC800": "Close"' in SENSOR_SOURCE

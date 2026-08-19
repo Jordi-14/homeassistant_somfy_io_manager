@@ -1,8 +1,9 @@
 # Future project: multi-bridge reliability
 
-Status: design notes only. The current hardware-validated deployment uses one
-ESP32/CC1101 bridge. Nothing in this document changes the supported 1W path or
-authorizes automatic pairing, controller cloning, or failover transmission.
+Status: the first single-bridge increment now queues complete MY gestures.
+General command scheduling, cross-bridge coordination, and receiver diversity
+remain design notes only. Nothing in this document authorizes automatic
+pairing, controller cloning, or failover transmission.
 
 Larger installations may use several bridges for radio coverage. Two related
 features would make that topology safer and more reliable:
@@ -28,12 +29,17 @@ features would make that topology safer and more reliable:
 
 ## Bridge-local transmission queue
 
-One CC1101 can only transmit one packet burst at a time. Ordinary commands are
-currently serialized implicitly by the ESPHome loop, but there is no explicit
-bridge-wide transaction queue. A future queue should treat a complete logical
-action as one transaction:
+One CC1101 can only transmit one packet burst at a time. The manager now queues
+simultaneous MY requests, keeps every complete STOP/execute/press/release
+gesture together, coalesces duplicate pending MY targets, and begins the next
+one after the authenticated release plus a short radio handoff gap. This is
+faster and safer than adding fixed delays in Home Assistant.
 
-- keep the frames and timing of MY and Venetian gestures atomic;
+Ordinary commands are still serialized only implicitly by the ESPHome loop.
+A future general queue should treat every complete logical action as one
+transaction:
+
+- extend the atomic treatment already used by MY to Venetian gestures;
 - serialize commands from every managed slot;
 - prioritize STOP over queued movement;
 - coalesce superseded queued targets for the same shutter;
@@ -46,7 +52,7 @@ action as one transaction:
 
 Whole-house OPEN or CLOSE would then become a predictable short sequence rather
 than simultaneous RF. Intermediate-position STOP timers would enter the same
-queue, and composite MY/tilt timing could not be stretched by another slot's
+queue, and composite tilt timing could not be stretched by another slot's
 frames.
 
 ## Coordination between transmitting bridges
@@ -124,11 +130,11 @@ Tests should cover:
 
 ## Suggested implementation order
 
-1. Add and hardware-test the bridge-local atomic RF transaction queue.
+1. Extend and hardware-test the MY queue as a general atomic RF transaction
+   queue.
 2. Define a versioned, privacy-reviewed normalized observation schema.
 3. Add receive-only estimator updates to the owning bridge.
 4. Deduplicate and route observations across Home Assistant config entries.
 5. Add cross-bridge transmission staggering.
 6. Validate with two bridges, then three, before documenting multi-bridge
    operation as supported.
-

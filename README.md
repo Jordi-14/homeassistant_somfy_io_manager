@@ -34,7 +34,7 @@ The bidirectional 2W path is not currently supported by this manager.
 | Integration | Manager API | Home Assistant | ESPHome | Status |
 | --- | ---: | ---: | ---: | --- |
 | 0.6.x | 1 | 2026.7+ | 2026.7.4 tested | 1W roller shutters hardware validated |
-| 0.7.0b5 | 1 | 2026.7+ | 2026.7.4 tested | 1W roller and Venetian shutters hardware validated |
+| 0.7.0b6 | 1 | 2026.7+ | 2026.7.4 tested | 1W roller and Venetian shutters hardware validated |
 
 Validated bridge hardware:
 
@@ -54,6 +54,7 @@ installation.
 - Native Venetian tilt controls with calibrated detents, direction inversion,
   and endpoint resynchronization.
 - Dedicated MY/favourite-position button.
+- Atomic bridge-local queuing for simultaneous MY requests.
 - Friendly physical-remote event sensor showing Open, Close, Stop/MY, or MY.
 - Physical-remote synchronization of the estimated cover state.
 - GUI-managed physical group remotes with any number of shutters per group.
@@ -138,7 +139,7 @@ api:
   custom_services: true
 
 external_components:
-  - source: github://Jordi-14/esphome_somfy@46fa24824b768fae2d7e6aa8dc9be479afc409d4
+  - source: github://Jordi-14/esphome_somfy@4b19eb13fda60567274e86c03f28f7b4118c6ae4
     components: [somfy, somfy_iohc_manager]
 
 text_sensor:
@@ -305,7 +306,10 @@ from calibrated travel time and corrected at full end stops:
   estimated target;
 - pressing Stop sends only the stopping frame;
 - pressing MY sends the complete native MY sequence, so an idle shutter moves
-  to its favourite position and a moving shutter first stops cleanly.
+  to its favourite position and a moving shutter first stops cleanly;
+- simultaneous MY requests on one bridge are queued as complete gestures. The
+  next shutter starts immediately after the previous authenticated release and
+  a short radio handoff gap, so automations do not need manual delays.
 
 If position gradually drifts, run the shutter fully to an end stop and verify
 the configured opening and closing times.
@@ -391,13 +395,14 @@ service/entity IDs. Review the file before attaching it to an issue.
 
 ## Future work
 
-A future multi-bridge project would add an explicit per-bridge RF transaction
-queue, stagger transmissions across ESPs, and use every bridge as a passive
-receiver. Home Assistant could then deduplicate the same physical press heard
-by several radios and forward one receive-only estimator update to the
-shutter's owning bridge. Transmitting controller identities would remain
-strictly single-owner; receiver diversity must never become rolling-code
-failover. See [the multi-bridge design notes](docs/future-multi-bridge.md).
+A future multi-bridge project would extend the current MY-only queue into a
+general per-bridge RF transaction scheduler, stagger transmissions across
+ESPs, and use every bridge as a passive receiver. Home Assistant could then
+deduplicate the same physical press heard by several radios and forward one
+receive-only estimator update to the shutter's owning bridge. Transmitting
+controller identities would remain strictly single-owner; receiver diversity
+must never become rolling-code failover. See
+[the multi-bridge design notes](docs/future-multi-bridge.md).
 
 ## Development
 

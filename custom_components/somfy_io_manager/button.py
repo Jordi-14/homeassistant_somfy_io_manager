@@ -76,5 +76,5 @@ class SomfyMyButton(ButtonEntity):
         await self._runtime.async_call(
             "control",
             {"slot": self._slot, "command": "my", "position_percent": 0.0},
-            "command_sent",
+            {"command_sent", "command_queued"},
         )
