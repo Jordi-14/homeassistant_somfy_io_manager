@@ -386,6 +386,16 @@ They deliberately omit shutter names, areas, internal identities, controller
 keys, recovery payloads, rolling codes, remote IDs, node IDs, and generated
 service/entity IDs. Review the file before attaching it to an issue.
 
+## Future work
+
+A future multi-bridge project would add an explicit per-bridge RF transaction
+queue, stagger transmissions across ESPs, and use every bridge as a passive
+receiver. Home Assistant could then deduplicate the same physical press heard
+by several radios and forward one receive-only estimator update to the
+shutter's owning bridge. Transmitting controller identities would remain
+strictly single-owner; receiver diversity must never become rolling-code
+failover. See [the multi-bridge design notes](docs/future-multi-bridge.md).
+
 ## Development
 
 ```bash
