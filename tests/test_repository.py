@@ -19,9 +19,9 @@ def test_public_versions_are_aligned() -> None:
     project = (ROOT / "pyproject.toml").read_text()
     changelog = (ROOT / "CHANGELOG.md").read_text()
 
-    assert manifest["version"] == "0.6.1"
-    assert 'version = "0.6.1"' in project
-    assert "## 0.6.1" in changelog
+    assert manifest["version"] == "0.7.0b1"
+    assert 'version = "0.7.0b1"' in project
+    assert "## 0.7.0b1" in changelog
 
 
 def test_diagnostics_status_allowlist_excludes_private_radio_state() -> None:

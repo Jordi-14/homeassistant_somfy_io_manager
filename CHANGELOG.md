@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0b1
+
+- Add GUI-managed Venetian shutters with native Home Assistant tilt controls.
+- Add user calibration for effective tilt detents, wheel direction, and the
+  saved MY tilt step.
+- Quantize intermediate tilt requests to reachable detents and use an endpoint
+  margin to resynchronize physical 0% and 100% limits.
+- Synchronize tilt estimates from the physical variation wheel and from
+  open, close, stop, and MY behavior.
+- Preserve roller-shutter behavior and the existing manager API version.
+
 ## 0.6.1
 
 - Add privacy-preserving Home Assistant diagnostics.

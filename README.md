@@ -33,7 +33,8 @@ The bidirectional 2W path is not currently supported by this manager.
 
 | Integration | Manager API | Home Assistant | ESPHome | Status |
 | --- | ---: | ---: | ---: | --- |
-| 0.6.x | 1 | 2026.7+ | 2026.7.4 tested | 1W hardware validated |
+| 0.6.x | 1 | 2026.7+ | 2026.7.4 tested | 1W roller shutters hardware validated |
+| 0.7.0b1 | 1 | 2026.7+ | 2026.7.4 tested | 1W roller and Venetian shutters hardware validated |
 
 Validated bridge hardware:
 
