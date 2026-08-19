@@ -94,10 +94,16 @@ class SomfyRemoteSensor(SensorEntity):
     def _status_changed(self, event: Event) -> None:
         new_state = event.data.get("new_state")
         status = parse_status(new_state.state if new_state else None)
+        target_slots = status.get("slots") if status is not None else None
+        matches_slot = (
+            self._slot in target_slots
+            if isinstance(target_slots, list) and target_slots
+            else status is not None and status.get("slot") == self._slot
+        )
         if (
             status is None
             or status.get("action") != "remote_command"
-            or status.get("slot") != self._slot
+            or not matches_slot
         ):
             return
         raw_command = str(status.get("detail") or "")

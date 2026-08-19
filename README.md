@@ -34,7 +34,7 @@ The bidirectional 2W path is not currently supported by this manager.
 | Integration | Manager API | Home Assistant | ESPHome | Status |
 | --- | ---: | ---: | ---: | --- |
 | 0.6.x | 1 | 2026.7+ | 2026.7.4 tested | 1W roller shutters hardware validated |
-| 0.7.0b2 | 1 | 2026.7+ | 2026.7.4 tested | 1W roller and Venetian shutters hardware validated |
+| 0.7.0b3 | 1 | 2026.7+ | 2026.7.4 tested | 1W roller and Venetian shutters hardware validated |
 
 Validated bridge hardware:
 
@@ -274,6 +274,12 @@ any number of shutters managed by that bridge, and one shutter may belong to
 multiple overlapping groups. **Edit a group remote** replaces its complete
 membership; **Remove a group remote** removes only the passive synchronization
 mapping.
+
+One physical group action is delivered with its complete shutter membership,
+so every assigned cover estimate and detected-remote sensor updates even when
+the ESPHome API coalesces rapid state publications. On Venetian shutters, the
+native stop-then-tilt frame pair is exposed as one tilt action rather than a
+separate STOP/MY followed by tilt.
 
 This operation is receive-only. It sends no radio frame, does not use PROG, and
 does not consume a motor pairing slot. The bridge continues to control each

@@ -168,6 +168,12 @@ def test_detected_remote_uses_friendly_actions_and_keeps_diagnostics():
     assert "_attr_force_update = True" in SENSOR_SOURCE
 
 
+def test_group_remote_status_updates_every_target_sensor():
+    assert 'target_slots = status.get("slots")' in SENSOR_SOURCE
+    assert "self._slot in target_slots" in SENSOR_SOURCE
+    assert 'status.get("slot") == self._slot' in SENSOR_SOURCE
+
+
 def test_moving_a_shutter_disables_the_old_transport_cover():
     function = FLOW_SOURCE.split("def _prepare_transport_entity", 1)[1]
     function = function.split("def _ensure_entity_not_managed", 1)[0]

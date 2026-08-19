@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0b3
+
+- Update every assigned shutter's detected-remote sensor from one physical
+  group command instead of losing intermediate target updates to ESPHome state
+  coalescing.
+- Work with the matching firmware's additive `slots` status field while
+  retaining compatibility with single-slot version-1 status payloads.
+- Correlate the native stop-then-tilt frame sequence in the matching firmware,
+  preventing a Venetian wheel gesture from appearing as an extra STOP/MY.
+- Hardware-verify All-channels wheel control across two Venetian blinds.
+
 ## 0.7.0b2
 
 - Align Venetian tilt with Home Assistant's convention: 100% is fully open and
