@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0b4
+
+- Decode the Situo Variation wheel's signed magnitude field so a large
+  physical roll is no longer always reported as one tilt step.
+- Show the estimated effective step count in friendly detected-remote history,
+  while retaining the raw command and numeric step diagnostic attribute.
+- Use the matching firmware's hardware-verified two-step compound gestures for
+  smoother Home Assistant tilt control without sacrificing reachable-position
+  rounding or endpoint margins.
+
 ## 0.7.0b3
 
 - Update every assigned shutter's detected-remote sensor from one physical

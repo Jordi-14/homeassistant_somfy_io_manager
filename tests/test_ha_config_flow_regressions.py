@@ -212,6 +212,8 @@ def test_venetian_default_matches_ha_open_tilt_convention():
 def test_venetian_physical_remote_events_are_friendly():
     assert '"0XF00D": "Tilt clockwise"' in SENSOR_SOURCE
     assert '"0XF00E": "Tilt counterclockwise"' in SENSOR_SOURCE
+    assert 'f"{command_name} ({step_count} steps)"' in SENSOR_SOURCE
+    assert '"steps": step_count' in SENSOR_SOURCE
 
 
 def test_group_remote_aliases_support_any_number_of_shutters_without_pairing():

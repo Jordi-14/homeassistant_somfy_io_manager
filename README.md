@@ -34,7 +34,7 @@ The bidirectional 2W path is not currently supported by this manager.
 | Integration | Manager API | Home Assistant | ESPHome | Status |
 | --- | ---: | ---: | ---: | --- |
 | 0.6.x | 1 | 2026.7+ | 2026.7.4 tested | 1W roller shutters hardware validated |
-| 0.7.0b3 | 1 | 2026.7+ | 2026.7.4 tested | 1W roller and Venetian shutters hardware validated |
+| 0.7.0b4 | 1 | 2026.7+ | 2026.7.4 tested | 1W roller and Venetian shutters hardware validated |
 
 Validated bridge hardware:
 
@@ -213,6 +213,10 @@ endpoint even after initial pairing or if the restored estimate no longer
 matches the physical slats. Intermediate percentages send only the exact
 number of required detents, are rounded to the nearest reachable position, and
 finish by reporting that reachable position rather than the original request.
+The matching firmware combines movement into hardware-verified two-step wheel
+gestures where possible and uses one original single-step gesture for an odd
+remainder. Larger synthetic rolls were deliberately avoided because testing
+found their motor response non-linear and an oversized roll could be rejected.
 
 Tilt follows Home Assistant's cover convention: 100% is fully open and 0% is
 fully closed. On the tested blind the counterclockwise endpoint is open and the
@@ -279,7 +283,9 @@ One physical group action is delivered with its complete shutter membership,
 so every assigned cover estimate and detected-remote sensor updates even when
 the ESPHome API coalesces rapid state publications. On Venetian shutters, the
 native stop-then-tilt frame pair is exposed as one tilt action rather than a
-separate STOP/MY followed by tilt.
+separate STOP/MY followed by tilt. The detected-remote sensor also reports an
+estimated effective step count for larger wheel rolls instead of representing
+every roll as a single step.
 
 This operation is receive-only. It sends no radio frame, does not use PROG, and
 does not consume a motor pairing slot. The bridge continues to control each

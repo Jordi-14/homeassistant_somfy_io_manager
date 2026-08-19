@@ -107,12 +107,20 @@ class SomfyRemoteSensor(SensorEntity):
         ):
             return
         raw_command = str(status.get("detail") or "")
-        self._attr_native_value = _REMOTE_COMMAND_NAMES.get(
-            raw_command.upper(), "Unknown"
-        )
+        command_name = _REMOTE_COMMAND_NAMES.get(raw_command.upper(), "Unknown")
+        step_count = status.get("steps")
+        if (
+            raw_command.upper() in {"0XF00D", "0XF00E"}
+            and isinstance(step_count, int)
+            and not isinstance(step_count, bool)
+            and step_count > 1
+        ):
+            command_name = f"{command_name} ({step_count} steps)"
+        self._attr_native_value = command_name
         self._attr_extra_state_attributes = {
             "remote_id": status.get("remote"),
             "raw_command": raw_command,
             "event": status.get("event"),
+            "steps": step_count,
         }
         self.async_write_ha_state()
