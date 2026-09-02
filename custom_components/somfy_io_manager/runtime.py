@@ -31,6 +31,7 @@ from .const import (
     STATE_UNCERTAIN,
     STORAGE_VERSION,
 )
+from .multibridge_logic import status_response_is_new
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,20 +72,27 @@ def parse_status(value: str | None) -> dict[str, Any] | None:
 class SomfyIOManagerRuntime:
     """Coordinate HA service calls and persist encrypted backups."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, coordinator: Any
+    ) -> None:
         self.hass = hass
         self.entry = entry
         self.esphome_entry_id = entry.data[CONF_ESPHOME_ENTRY_ID]
         self.device_name = entry.data[CONF_DEVICE_NAME]
         self.status_entity_id = entry.data[CONF_STATUS_ENTITY_ID]
         self.backup_entity_id = entry.data[CONF_BACKUP_ENTITY_ID]
+        self.coordinator = coordinator
         self.service_prefix = self.device_name.replace("-", "_")
         self._store: Store[dict[str, Any]] = Store(
             hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}"
         )
         self._backups: dict[str, str] = {}
         self._pending: dict[str, dict[str, Any]] = {}
+        self._pending_transfer: dict[str, Any] | None = None
+        self._synced_aliases: set[str] = set()
+        self._multi_bridge_caps = 0
         self._remove_listener = None
+        self._service_lock = asyncio.Lock()
 
     async def async_setup(self) -> None:
         """Load recovery data and start following backup refreshes."""
@@ -101,6 +109,16 @@ class SomfyIOManagerRuntime:
                 for slot, value in stored["pending"].items()
                 if isinstance(value, dict)
             }
+        if isinstance(stored, dict) and isinstance(
+            stored.get("pending_transfer"), dict
+        ):
+            self._pending_transfer = dict(stored["pending_transfer"])
+        if isinstance(stored, dict) and isinstance(stored.get("synced_aliases"), list):
+            self._synced_aliases = {
+                str(value)
+                for value in stored["synced_aliases"]
+                if isinstance(value, str)
+            }
         # An uncertain post-RF attempt is also kept in config-entry options so
         # it remains resumable even if HA restarted before the delayed Store
         # write completed.
@@ -109,6 +127,10 @@ class SomfyIOManagerRuntime:
                 self._pending.setdefault(str(shutter[CONF_SLOT]), dict(shutter))
         self._remove_listener = async_track_state_change_event(
             self.hass, self.status_entity_id, self._async_status_changed
+        )
+        current = self.hass.states.get(self.status_entity_id)
+        self._remember_capabilities(
+            parse_status(current.state if current is not None else None)
         )
 
     async def async_unload(self) -> None:
@@ -121,6 +143,9 @@ class SomfyIOManagerRuntime:
     def _async_status_changed(self, event: Event) -> None:
         new_state = event.data.get("new_state")
         status = parse_status(new_state.state if new_state else None)
+        self._remember_capabilities(status)
+        if status is not None and status.get("action") == "remote_observation":
+            self.coordinator.receive_observation(self, status)
         if status is None or status.get("action") not in {
             "backup_updated",
             "backup_exported",
@@ -130,6 +155,8 @@ class SomfyIOManagerRuntime:
             "venetian_configured",
             "restored",
             "moved",
+            "transfer_prepared",
+            "transfer_activated",
         }:
             return
         slot = status.get("slot")
@@ -190,16 +217,71 @@ class SomfyIOManagerRuntime:
     @callback
     def _schedule_save(self) -> None:
         self._store.async_delay_save(
-            lambda: {
-                "backups": self._backups.copy(),
-                "pending": self._pending.copy(),
-            },
+            self._serialized_store,
             delay=1.0,
         )
+
+    @callback
+    def _serialized_store(self) -> dict[str, Any]:
+        return {
+            "backups": self._backups.copy(),
+            "pending": self._pending.copy(),
+            "pending_transfer": (
+                self._pending_transfer.copy() if self._pending_transfer else None
+            ),
+            "synced_aliases": sorted(self._synced_aliases),
+        }
+
+    @property
+    def pending_transfer(self) -> dict[str, Any] | None:
+        """Return the unfinished cross-bridge ownership transaction."""
+        return self._pending_transfer.copy() if self._pending_transfer else None
+
+    async def async_set_pending_transfer(self, transfer: dict[str, Any] | None) -> None:
+        """Durably checkpoint a cross-bridge transfer before its next step."""
+        self._pending_transfer = transfer.copy() if transfer else None
+        await self._store.async_save(self._serialized_store())
 
     def service_name(self, suffix: str) -> str:
         """Build ESPHome's generated custom-action name."""
         return f"{self.service_prefix}_somfy_{suffix}"
+
+    def has_service(self, suffix: str) -> bool:
+        """Return whether this online ESPHome node exposes an action."""
+        return self.hass.services.has_service("esphome", self.service_name(suffix))
+
+    @property
+    def available(self) -> bool:
+        """Return whether the bridge status transport is currently usable."""
+        state = self.hass.states.get(self.status_entity_id)
+        return state is not None and parse_status(state.state) is not None
+
+    @property
+    def multi_bridge_capable(self) -> bool:
+        """Return whether this node advertised the additive multi-bridge API."""
+        return self._multi_bridge_caps == 0x0F or all(
+            self.has_service(suffix)
+            for suffix in ("redundant_control", "relay", "observe", "transfer")
+        )
+
+    def has_multi_bridge_capability(self, capability: int) -> bool:
+        """Check one advertised capability bit, with service discovery fallback."""
+        if self._multi_bridge_caps & capability == capability:
+            return True
+        inferred = {
+            0x02: ("observe",),
+            0x04: ("redundant_control", "relay"),
+            0x08: ("transfer",),
+        }.get(capability)
+        return inferred is not None and all(self.has_service(item) for item in inferred)
+
+    @callback
+    def _remember_capabilities(self, status: dict[str, Any] | None) -> None:
+        if status is None or status.get("multi_bridge") is not True:
+            return
+        caps = status.get("mb_caps")
+        if isinstance(caps, int) and not isinstance(caps, bool):
+            self._multi_bridge_caps = max(0, caps)
 
     async def async_call(
         self,
@@ -210,6 +292,20 @@ class SomfyIOManagerRuntime:
         timeout: float = 10.0,
     ) -> dict[str, Any]:
         """Call a manager action and wait for its matching status event."""
+        async with self._service_lock:
+            return await self._async_call_unlocked(
+                suffix, data, expected_actions, timeout=timeout
+            )
+
+    async def _async_call_unlocked(
+        self,
+        suffix: str,
+        data: dict[str, Any],
+        expected_actions: str | Iterable[str],
+        *,
+        timeout: float,
+    ) -> dict[str, Any]:
+        """Execute one already-serialized manager action."""
         service = self.service_name(suffix)
         if not self.hass.services.has_service("esphome", service):
             raise ManagerUnavailable(f"missing service esphome.{service}")
@@ -219,11 +315,9 @@ class SomfyIOManagerRuntime:
             if isinstance(expected_actions, str)
             else set(expected_actions)
         )
-        before = parse_status(
-            self.hass.states.get(self.status_entity_id).state
-            if self.hass.states.get(self.status_entity_id)
-            else None
-        )
+        before_state = self.hass.states.get(self.status_entity_id)
+        before_raw = before_state.state if before_state else None
+        before = parse_status(before_raw)
         before_event = before.get("event") if before else None
         # A move can report an error against either endpoint and reports
         # success from the destination. Other actions, including swaps, reply
@@ -238,14 +332,16 @@ class SomfyIOManagerRuntime:
         @callback
         def status_changed(event: Event) -> None:
             new_state = event.data.get("new_state")
-            status = parse_status(new_state.state if new_state else None)
-            if status is None or status.get("event") == before_event:
+            current_raw = new_state.state if new_state else None
+            status = parse_status(current_raw)
+            if status is None or not status_response_is_new(
+                before_raw, before_event, current_raw, status
+            ):
                 return
             if requested_slots and status.get("slot") not in requested_slots:
                 return
             if (
-                status.get("action") in expected
-                or status.get("action") == "error"
+                status.get("action") in expected or status.get("action") == "error"
             ) and not future.done():
                 future.set_result(status)
 
@@ -255,10 +351,13 @@ class SomfyIOManagerRuntime:
         try:
             await self.hass.services.async_call("esphome", service, data, blocking=True)
             current_state = self.hass.states.get(self.status_entity_id)
-            current = parse_status(current_state.state if current_state else None)
+            current_raw = current_state.state if current_state else None
+            current = parse_status(current_raw)
             if (
                 current is not None
-                and current.get("event") != before_event
+                and status_response_is_new(
+                    before_raw, before_event, current_raw, current
+                )
                 and (not requested_slots or current.get("slot") in requested_slots)
                 and (
                     current.get("action") in expected
@@ -284,19 +383,17 @@ class SomfyIOManagerRuntime:
             {"action": "export", "slot": slot},
             "backup_exported",
         )
-        state = self.hass.states.get(self.backup_entity_id)
-        if state is None or state.state in {"unknown", "unavailable", ""}:
+        backup = self.backup_for_slot(slot)
+        if backup is None:
             raise ManagerUnavailable("encrypted backup entity is unavailable")
-        self.async_remember_backup(slot, state.state)
-        return state.state
+        return backup
 
     async def async_sync_remote_aliases(self) -> None:
         """Restore receive-only group mappings from HA's durable metadata."""
         shutters = {
             str(shutter.get(CONF_SHUTTER_ID)): int(shutter[CONF_SLOT])
             for shutter in self.entry.options.get(CONF_SHUTTERS, [])
-            if shutter.get(CONF_STATE) == STATE_ACTIVE
-            and shutter.get(CONF_SHUTTER_ID)
+            if shutter.get(CONF_STATE) == STATE_ACTIVE and shutter.get(CONF_SHUTTER_ID)
         }
         for alias in self.entry.options.get(CONF_REMOTE_ALIASES, []):
             remote = alias.get(CONF_REMOTE)
@@ -319,3 +416,29 @@ class SomfyIOManagerRuntime:
                 },
                 "alias_saved",
             )
+
+    async def async_sync_remote_alias_map(self, aliases: dict[str, list[int]]) -> None:
+        """Synchronize this bridge's local projection of global group aliases."""
+        desired = set(aliases)
+        for remote in sorted(self._synced_aliases - desired):
+            try:
+                await self.async_call(
+                    "remote_alias",
+                    {"action": "remove", "remote": remote, "slots": ""},
+                    "alias_removed",
+                )
+            except ManagerRejected as err:
+                if err.detail != "remote_alias_not_found":
+                    raise
+        for remote, slots in sorted(aliases.items()):
+            await self.async_call(
+                "remote_alias",
+                {
+                    "action": "set",
+                    "remote": remote,
+                    "slots": ",".join(str(slot) for slot in sorted(set(slots))),
+                },
+                "alias_saved",
+            )
+        self._synced_aliases = desired
+        self._schedule_save()

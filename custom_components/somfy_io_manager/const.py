@@ -15,6 +15,8 @@ CONF_REMOTE_ALIASES = "remote_aliases"
 CONF_REMOTE = "remote"
 CONF_SHUTTER_IDS = "shutter_ids"
 CONF_SHUTTER_ID = "shutter_id"
+CONF_PRIMARY_ENTRY_ID = "primary_entry_id"
+CONF_SECONDARY_ENTRY_ID = "secondary_entry_id"
 CONF_SLOT = "slot"
 CONF_TARGET_SLOT = "target_slot"
 CONF_NAME = "name"
@@ -35,5 +37,11 @@ STATE_ACTIVE = "active"
 STATE_UNCERTAIN = "uncertain"
 
 DATA_RUNTIME = "runtime"
+DATA_COORDINATOR = "coordinator"
 STORAGE_VERSION = 1
 MAX_SHUTTER_SLOTS = 20
+
+IDEMPOTENT_RELAY_COMMANDS = frozenset({"open", "close", "stop"})
+OBSERVATION_COMMANDS = frozenset(
+    {"open", "close", "stop_my", "tilt_clockwise", "tilt_counterclockwise"}
+)

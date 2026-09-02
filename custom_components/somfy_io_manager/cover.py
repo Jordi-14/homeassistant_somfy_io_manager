@@ -94,15 +94,12 @@ class SomfyManagedCover(CoverEntity):
         object_id = shutter_object_id(shutter)
         shutter_id = ensure_shutter_id(shutter)
         self._runtime = runtime
-        self._slot = int(shutter[CONF_SLOT])
+        self._shutter = dict(shutter)
         self._is_venetian = (
-            shutter.get(CONF_COVER_TYPE, COVER_TYPE_SHUTTER)
-            == COVER_TYPE_VENETIAN
+            shutter.get(CONF_COVER_TYPE, COVER_TYPE_SHUTTER) == COVER_TYPE_VENETIAN
         )
         self._attr_device_class = (
-            CoverDeviceClass.BLIND
-            if self._is_venetian
-            else CoverDeviceClass.SHUTTER
+            CoverDeviceClass.BLIND if self._is_venetian else CoverDeviceClass.SHUTTER
         )
         self._attr_supported_features = self._BASE_FEATURES
         if self._is_venetian:
@@ -165,14 +162,8 @@ class SomfyManagedCover(CoverEntity):
             self.async_write_ha_state()
 
     async def _async_control(self, command: str, position: float = 0.0) -> None:
-        await self._runtime.async_call(
-            "control",
-            {
-                "slot": self._slot,
-                "command": command,
-                "position_percent": position,
-            },
-            "command_sent",
+        await self._runtime.coordinator.async_control(
+            self._runtime, self._shutter, command, position
         )
 
     async def async_open_cover(self, **kwargs) -> None:
@@ -189,7 +180,13 @@ class SomfyManagedCover(CoverEntity):
 
     async def async_set_cover_position(self, **kwargs) -> None:
         """Move the shutter to an estimated percentage."""
-        await self._async_control("position", float(kwargs[ATTR_POSITION]))
+        position = float(kwargs[ATTR_POSITION])
+        if position <= 0:
+            await self._async_control("close")
+        elif position >= 100:
+            await self._async_control("open")
+        else:
+            await self._async_control("position", position)
 
     async def async_open_cover_tilt(self, **kwargs) -> None:
         """Rotate Venetian slats to the configured open endpoint."""
@@ -205,6 +202,4 @@ class SomfyManagedCover(CoverEntity):
 
     async def async_set_cover_tilt_position(self, **kwargs) -> None:
         """Rotate Venetian slats to an estimated percentage."""
-        await self._async_control(
-            "tilt_position", float(kwargs[ATTR_TILT_POSITION])
-        )
+        await self._async_control("tilt_position", float(kwargs[ATTR_TILT_POSITION]))

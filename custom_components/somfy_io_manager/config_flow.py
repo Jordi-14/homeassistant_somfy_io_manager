@@ -23,8 +23,10 @@ from .const import (
     CONF_MY_TILT_STEP,
     CONF_NAME,
     CONF_OPEN_SECONDS,
+    CONF_PRIMARY_ENTRY_ID,
     CONF_REMOTE,
     CONF_REMOTE_ALIASES,
+    CONF_SECONDARY_ENTRY_ID,
     CONF_SHUTTER_ID,
     CONF_SHUTTER_IDS,
     CONF_SHUTTERS,
@@ -36,13 +38,15 @@ from .const import (
     CONF_TILT_STEPS,
     COVER_TYPE_SHUTTER,
     COVER_TYPE_VENETIAN,
+    DATA_COORDINATOR,
     DATA_RUNTIME,
     DOMAIN,
     MAX_SHUTTER_SLOTS,
     STATE_ACTIVE,
     STATE_UNCERTAIN,
 )
-from .entity import ensure_shutter_id
+from .coordinator import SomfyIOMultiBridgeCoordinator
+from .entity import ensure_shutter_id, remove_shutter_registry_rows
 from .entity_migration import (
     configure_transport_cover,
     find_transport_cover,
@@ -50,6 +54,7 @@ from .entity_migration import (
 from .runtime import (
     ManagerError,
     ManagerRejected,
+    ManagerUnavailable,
     SomfyIOManagerRuntime,
 )
 
@@ -65,10 +70,16 @@ CONF_RETRY_CONTROLLER_FAILED = "retry_controller_failed"
 CONF_RETRY_SETUP = "retry_setup"
 CONF_GROUP_REMOTE = "group_remote"
 CONF_CONFIRM_REMOVE = "confirm_remove"
+CONF_SECONDARY_BRIDGE = "secondary_bridge"
+CONF_DESTINATION_BRIDGE = "destination_bridge"
+CONF_CONFIRM_TRANSFER = "confirm_transfer"
+CONF_TRANSFER_ACTION = "transfer_action"
 
 ACTION_CONTINUE = "continue"
 ACTION_DISCARD = "discard"
 ACTION_RETRY = "retry"
+ACTION_ROLLBACK = "rollback"
+SECONDARY_NONE = "none"
 
 
 class FlowError(Exception):
@@ -239,9 +250,7 @@ def _validate_details(user_input: dict[str, Any]) -> dict[str, Any]:
     details[CONF_OPEN_SECONDS] = float(details[CONF_OPEN_SECONDS])
     details[CONF_CLOSE_SECONDS] = float(details[CONF_CLOSE_SECONDS])
     details[CONF_MY_PERCENT] = float(details[CONF_MY_PERCENT])
-    details[CONF_COVER_TYPE] = str(
-        details.get(CONF_COVER_TYPE, COVER_TYPE_SHUTTER)
-    )
+    details[CONF_COVER_TYPE] = str(details.get(CONF_COVER_TYPE, COVER_TYPE_SHUTTER))
     if details[CONF_COVER_TYPE] not in {
         COVER_TYPE_SHUTTER,
         COVER_TYPE_VENETIAN,
@@ -249,9 +258,7 @@ def _validate_details(user_input: dict[str, Any]) -> dict[str, Any]:
         raise FlowError("invalid_cover_type")
     details[CONF_TILT_STEPS] = int(details.get(CONF_TILT_STEPS, 12))
     details[CONF_MY_TILT_STEP] = int(details.get(CONF_MY_TILT_STEP, 6))
-    details[CONF_TILT_INVERTED] = bool(
-        details.get(CONF_TILT_INVERTED, True)
-    )
+    details[CONF_TILT_INVERTED] = bool(details.get(CONF_TILT_INVERTED, True))
     if (
         details[CONF_COVER_TYPE] == COVER_TYPE_VENETIAN
         and details[CONF_MY_TILT_STEP] > details[CONF_TILT_STEPS]
@@ -263,7 +270,7 @@ def _validate_details(user_input: dict[str, Any]) -> dict[str, Any]:
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Connect the GUI manager to one ESPHome radio bridge."""
 
-    VERSION = 3
+    VERSION = 4
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -331,6 +338,10 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         self._alias_shutter_ids: list[str] = []
 
     @property
+    def _coordinator(self) -> SomfyIOMultiBridgeCoordinator:
+        return self.hass.data[DOMAIN][DATA_COORDINATOR]
+
+    @property
     def _runtime(self) -> SomfyIOManagerRuntime:
         return self.hass.data[DOMAIN][self.config_entry.entry_id][DATA_RUNTIME]
 
@@ -338,25 +349,43 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         return [dict(item) for item in self.config_entry.options.get(CONF_SHUTTERS, [])]
 
     def _remote_aliases(self) -> list[dict[str, Any]]:
-        """Return a mutable copy of receive-only group mappings."""
-        aliases = []
-        for item in self.config_entry.options.get(CONF_REMOTE_ALIASES, []):
-            if not isinstance(item, dict) or not isinstance(
-                item.get(CONF_SHUTTER_IDS), list
-            ):
+        """Return the union of receive-only group mappings across all entries."""
+        merged: dict[str, set[str]] = {}
+        for runtime in self._coordinator.runtimes.values():
+            for item in runtime.entry.options.get(CONF_REMOTE_ALIASES, []):
+                if not isinstance(item, dict) or not isinstance(
+                    item.get(CONF_SHUTTER_IDS), list
+                ):
+                    continue
+                remote = _normalize_remote(item.get(CONF_REMOTE))
+                if not remote:
+                    continue
+                merged.setdefault(remote, set()).update(
+                    str(value) for value in item[CONF_SHUTTER_IDS]
+                )
+        return [
+            {CONF_REMOTE: remote, CONF_SHUTTER_IDS: sorted(shutter_ids)}
+            for remote, shutter_ids in sorted(merged.items())
+        ]
+
+    def _save_global_remote_aliases(
+        self, aliases: list[dict[str, Any]]
+    ) -> config_entries.ConfigFlowResult:
+        """Persist the authoritative group directory in every loaded entry."""
+        for runtime in self._coordinator.runtimes.values():
+            if runtime.entry.entry_id == self.config_entry.entry_id:
                 continue
-            remote = _normalize_remote(item.get(CONF_REMOTE))
-            if not remote:
-                continue
-            aliases.append(
-                {
-                    CONF_REMOTE: remote,
-                    CONF_SHUTTER_IDS: [
-                        str(value) for value in item[CONF_SHUTTER_IDS]
-                    ],
-                }
+            self.hass.config_entries.async_update_entry(
+                runtime.entry,
+                options={
+                    **runtime.entry.options,
+                    CONF_REMOTE_ALIASES: aliases,
+                },
             )
-        return aliases
+        return self.async_create_entry(
+            title="",
+            data={**self.config_entry.options, CONF_REMOTE_ALIASES: aliases},
+        )
 
     def _active_shutters(self) -> list[dict[str, Any]]:
         shutters = [
@@ -366,21 +395,32 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         ]
         for shutter in shutters:
             ensure_shutter_id(shutter)
+            shutter.setdefault(CONF_PRIMARY_ENTRY_ID, self.config_entry.entry_id)
         return shutters
+
+    def _all_active_shutters(
+        self,
+    ) -> list[tuple[SomfyIOManagerRuntime, dict[str, Any]]]:
+        """Return active shutters from every loaded bridge."""
+        return self._coordinator.active_shutters()
 
     def _shutter_alias_options(self) -> list[selector.SelectOptionDict]:
         return [
             selector.SelectOptionDict(
                 value=str(shutter[CONF_SHUTTER_ID]),
-                label=f"{shutter[CONF_NAME]} (slot {int(shutter[CONF_SLOT]) + 1})",
+                label=(
+                    f"{shutter[CONF_NAME]} — {runtime.entry.title} "
+                    f"(slot {int(shutter[CONF_SLOT]) + 1})"
+                ),
             )
-            for shutter in self._active_shutters()
+            for runtime, shutter in self._all_active_shutters()
         ]
 
     def _selected_shutter_ids(self, value: Any) -> list[str]:
         selected = [value] if isinstance(value, str) else list(value or [])
         valid = {
-            str(shutter[CONF_SHUTTER_ID]) for shutter in self._active_shutters()
+            str(shutter[CONF_SHUTTER_ID])
+            for _runtime, shutter in self._all_active_shutters()
         }
         result = sorted({str(item) for item in selected if str(item) in valid})
         if not result:
@@ -388,20 +428,24 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         return result
 
     def _slots_csv(self, shutter_ids: list[str]) -> str:
+        slots = self._local_alias_slots(shutter_ids)
+        if not slots:
+            raise FlowError("group_shutter_missing")
+        return ",".join(str(slot) for slot in slots)
+
+    def _local_alias_slots(self, shutter_ids: list[str]) -> list[int]:
+        """Project permanent global members onto this bridge's local slots."""
         selected = set(shutter_ids)
-        slots = sorted(
+        return sorted(
             int(shutter[CONF_SLOT])
             for shutter in self._active_shutters()
             if str(shutter[CONF_SHUTTER_ID]) in selected
         )
-        if len(slots) != len(selected):
-            raise FlowError("group_shutter_missing")
-        return ",".join(str(slot) for slot in slots)
 
     def _group_remote_options(self) -> list[selector.SelectOptionDict]:
         names = {
             str(shutter[CONF_SHUTTER_ID]): str(shutter[CONF_NAME])
-            for shutter in self._active_shutters()
+            for _runtime, shutter in self._all_active_shutters()
         }
         options = []
         for alias in self._remote_aliases():
@@ -422,21 +466,13 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         self, remote: str, shutter_ids: list[str]
     ) -> config_entries.ConfigFlowResult:
         aliases = [
-            alias
-            for alias in self._remote_aliases()
-            if alias[CONF_REMOTE] != remote
+            alias for alias in self._remote_aliases() if alias[CONF_REMOTE] != remote
         ]
         aliases.append(
             {CONF_REMOTE: remote, CONF_SHUTTER_IDS: sorted(set(shutter_ids))}
         )
         aliases.sort(key=lambda item: item[CONF_REMOTE])
-        return self.async_create_entry(
-            title="",
-            data={
-                **self.config_entry.options,
-                CONF_REMOTE_ALIASES: aliases,
-            },
-        )
+        return self._save_global_remote_aliases(aliases)
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -453,7 +489,303 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             menu.extend(("edit_group_remote", "remove_group_remote"))
         if self._runtime.pending:
             menu.append("resume_attempt")
+        if self._runtime.pending_transfer:
+            menu.append("resume_bridge_transfer")
+        elif self._active_shutters() and self._coordinator.bridge_options(
+            exclude=self.config_entry.entry_id
+        ):
+            menu.extend(("assign_secondary_bridge", "move_to_bridge"))
         return self.async_show_menu(step_id="init", menu_options=menu)
+
+    def _local_shutter_options(self) -> list[selector.SelectOptionDict]:
+        options = []
+        for shutter in self._active_shutters():
+            label = f"{shutter[CONF_NAME]} (slot {int(shutter[CONF_SLOT]) + 1})"
+            secondary = self._coordinator.runtime_for(
+                shutter.get(CONF_SECONDARY_ENTRY_ID)
+            )
+            if secondary is not None:
+                label += f" ↔ {secondary.entry.title}"
+            options.append(
+                selector.SelectOptionDict(
+                    value=str(shutter[CONF_SHUTTER_ID]), label=label
+                )
+            )
+        return options
+
+    async def async_step_assign_secondary_bridge(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Assign or remove the stateless exact-frame relay for one shutter."""
+        bridge_options = [
+            selector.SelectOptionDict(
+                value=SECONDARY_NONE, label="No secondary / Cap secundari"
+            )
+        ] + [
+            selector.SelectOptionDict(value=item["value"], label=item["label"])
+            for item in self._coordinator.bridge_options(
+                exclude=self.config_entry.entry_id
+            )
+        ]
+        if len(bridge_options) == 1:
+            return self.async_abort(reason="no_other_bridges")
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            shutter_id = str(user_input[CONF_SHUTTER_ID])
+            selected_secondary = str(user_input.get(CONF_SECONDARY_BRIDGE) or "")
+            secondary_id = (
+                "" if selected_secondary == SECONDARY_NONE else selected_secondary
+            )
+            shutter = next(
+                (
+                    item
+                    for item in self._active_shutters()
+                    if item[CONF_SHUTTER_ID] == shutter_id
+                ),
+                None,
+            )
+            secondary = self._coordinator.runtime_for(secondary_id)
+            if shutter is None:
+                errors["base"] = "shutter_unavailable"
+            elif secondary_id and secondary is None:
+                errors["base"] = "bridge_unavailable"
+            elif secondary_id and (
+                not self._runtime.has_multi_bridge_capability(0x04)
+                or not secondary.has_multi_bridge_capability(0x04)
+            ):
+                errors["base"] = "multibridge_firmware_required"
+            else:
+                if secondary_id:
+                    shutter[CONF_SECONDARY_ENTRY_ID] = secondary_id
+                else:
+                    shutter.pop(CONF_SECONDARY_ENTRY_ID, None)
+                shutters = [
+                    shutter if item.get(CONF_SHUTTER_ID) == shutter_id else item
+                    for item in self._shutters()
+                ]
+                return self.async_create_entry(
+                    title="",
+                    data={**self.config_entry.options, CONF_SHUTTERS: shutters},
+                )
+
+        return self.async_show_form(
+            step_id="assign_secondary_bridge",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_SHUTTER_ID): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=self._local_shutter_options()
+                        )
+                    ),
+                    vol.Required(
+                        CONF_SECONDARY_BRIDGE, default=SECONDARY_NONE
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(options=bridge_options)
+                    ),
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_move_to_bridge(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Transfer the sole active controller owner to another bridge."""
+        bridge_options = [
+            selector.SelectOptionDict(value=item["value"], label=item["label"])
+            for item in self._coordinator.bridge_options(
+                exclude=self.config_entry.entry_id
+            )
+        ]
+        if not bridge_options:
+            return self.async_abort(reason="no_other_bridges")
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            shutter_id = str(user_input[CONF_SHUTTER_ID])
+            destination_id = str(user_input[CONF_DESTINATION_BRIDGE])
+            destination_slot = int(user_input[CONF_TARGET_SLOT]) - 1
+            shutter = next(
+                (
+                    item
+                    for item in self._active_shutters()
+                    if item[CONF_SHUTTER_ID] == shutter_id
+                ),
+                None,
+            )
+            destination = self._coordinator.runtime_for(destination_id)
+            if not user_input.get(CONF_CONFIRM_TRANSFER):
+                errors["base"] = "confirm_bridge_transfer"
+            elif shutter is None:
+                errors["base"] = "shutter_unavailable"
+            elif destination is None:
+                errors["base"] = "bridge_unavailable"
+            elif not self._runtime.has_multi_bridge_capability(
+                0x08
+            ) or not destination.has_multi_bridge_capability(0x08):
+                errors["base"] = "multibridge_firmware_required"
+            elif self._runtime.pending_transfer:
+                errors["base"] = "transfer_already_pending"
+            else:
+                try:
+                    transfer = await self._coordinator.async_start_transfer(
+                        self._runtime, shutter, destination, destination_slot
+                    )
+                    return await self._async_finish_bridge_transfer(transfer)
+                except ManagerRejected as err:
+                    errors["base"] = (
+                        "target_slot_not_empty"
+                        if err.detail == "target_slot_not_empty"
+                        else "bridge_transfer_rejected"
+                    )
+                except ManagerError:
+                    _LOGGER.exception("Cross-bridge Somfy transfer was interrupted")
+                    errors["base"] = "bridge_transfer_interrupted"
+
+        return self.async_show_form(
+            step_id="move_to_bridge",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_SHUTTER_ID): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=self._local_shutter_options()
+                        )
+                    ),
+                    vol.Required(CONF_DESTINATION_BRIDGE): selector.SelectSelector(
+                        selector.SelectSelectorConfig(options=bridge_options)
+                    ),
+                    vol.Required(CONF_TARGET_SLOT, default=1): _number_selector(
+                        1, MAX_SHUTTER_SLOTS, 1
+                    ),
+                    vol.Required(CONF_CONFIRM_TRANSFER, default=False): bool,
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_resume_bridge_transfer(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Continue or safely roll back an interrupted ownership transfer."""
+        transfer = self._runtime.pending_transfer
+        if transfer is None:
+            return self.async_abort(reason="no_pending_transfer")
+        phase = str(transfer.get("phase", ""))
+        actions = [ACTION_CONTINUE]
+        if phase in {"preparing", "prepared", "imported"}:
+            actions.append(ACTION_ROLLBACK)
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                if user_input[CONF_TRANSFER_ACTION] == ACTION_ROLLBACK:
+                    await self._coordinator.async_rollback_transfer(
+                        self._runtime, transfer
+                    )
+                    return self.async_create_entry(
+                        title="", data=self.config_entry.options
+                    )
+                transfer = await self._coordinator.async_resume_transfer(
+                    self._runtime, transfer
+                )
+                return await self._async_finish_bridge_transfer(transfer)
+            except ManagerRejected:
+                errors["base"] = "bridge_transfer_rejected"
+            except ManagerError:
+                _LOGGER.exception("Could not resume cross-bridge Somfy transfer")
+                errors["base"] = "bridge_transfer_interrupted"
+
+        destination = self._coordinator.runtime_for(
+            transfer.get("destination_entry_id")
+        )
+        shutter = transfer.get("shutter", {})
+        return self.async_show_form(
+            step_id="resume_bridge_transfer",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_TRANSFER_ACTION, default=ACTION_CONTINUE
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=actions,
+                            translation_key="transfer_action",
+                        )
+                    )
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "name": str(shutter.get(CONF_NAME, "shutter")),
+                "phase": phase,
+                "bridge": (
+                    destination.entry.title if destination is not None else "offline"
+                ),
+                "slot": str(int(transfer.get("destination_slot", 0)) + 1),
+            },
+        )
+
+    async def _async_finish_bridge_transfer(
+        self, transfer: dict[str, Any]
+    ) -> config_entries.ConfigFlowResult:
+        """Commit HA metadata only after the destination is the active owner."""
+        if transfer.get("phase") != "active":
+            raise ManagerUnavailable("destination controller is not active")
+        destination = self._coordinator.runtime_for(
+            transfer.get("destination_entry_id")
+        )
+        if destination is None:
+            raise ManagerUnavailable("destination bridge is offline")
+        shutter = dict(transfer["shutter"])
+        shutter_id = str(shutter[CONF_SHUTTER_ID])
+        source_slot = int(transfer["source_slot"])
+        destination_slot = int(transfer["destination_slot"])
+        shutter[CONF_SLOT] = destination_slot
+        shutter[CONF_PRIMARY_ENTRY_ID] = destination.entry.entry_id
+        if shutter.get(CONF_SECONDARY_ENTRY_ID) == destination.entry.entry_id:
+            shutter.pop(CONF_SECONDARY_ENTRY_ID, None)
+
+        destination_options = dict(destination.entry.options)
+        destination_shutters = [
+            dict(item)
+            for item in destination_options.get(CONF_SHUTTERS, [])
+            if item.get(CONF_SHUTTER_ID) != shutter_id
+        ]
+        if any(
+            int(item[CONF_SLOT]) == destination_slot for item in destination_shutters
+        ):
+            raise ManagerRejected("target_slot_not_empty")
+        destination_shutters.append(shutter)
+        destination_shutters.sort(key=lambda item: int(item[CONF_SLOT]))
+        destination_options[CONF_SHUTTERS] = destination_shutters
+
+        source_options = dict(self.config_entry.options)
+        source_options[CONF_SHUTTERS] = [
+            dict(item)
+            for item in source_options.get(CONF_SHUTTERS, [])
+            if item.get(CONF_SHUTTER_ID) != shutter_id
+        ]
+        registry = er.async_get(self.hass)
+        configure_transport_cover(
+            registry,
+            esphome_entry_id=self._runtime.esphome_entry_id,
+            device_name=self._runtime.device_name,
+            slot=source_slot,
+            active=False,
+        )
+        configure_transport_cover(
+            registry,
+            esphome_entry_id=destination.esphome_entry_id,
+            device_name=destination.device_name,
+            slot=destination_slot,
+            active=True,
+        )
+        remove_shutter_registry_rows(self.hass, self.config_entry, shutter)
+        self.hass.config_entries.async_update_entry(
+            destination.entry, options=destination_options
+        )
+        self.hass.config_entries.async_update_entry(
+            self.config_entry, options=source_options
+        )
+        await self._runtime.async_set_pending_transfer(None)
+        return self.async_abort(reason="bridge_transfer_complete")
 
     async def async_step_add_shutter(
         self, user_input: dict[str, Any] | None = None
@@ -470,6 +802,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 )
                 self._slot = int(status["slot"])
                 self._draft[CONF_SLOT] = self._slot
+                self._draft[CONF_PRIMARY_ENTRY_ID] = self.config_entry.entry_id
                 self._draft[CONF_STATE] = "staged"
                 self._runtime.async_remember_pending(self._slot, self._draft)
                 await self._runtime.async_call(
@@ -639,6 +972,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 self._slot = target_slot
                 self._draft.pop(CONF_TARGET_SLOT, None)
                 self._draft[CONF_SLOT] = self._slot
+                self._draft[CONF_PRIMARY_ENTRY_ID] = self.config_entry.entry_id
                 self._draft[CONF_STATE] = STATE_ACTIVE
                 return await self._async_finalize()
             except FlowError as err:
@@ -885,10 +1219,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
             cover_type = str(user_input[CONF_COVER_TYPE])
             tilt_steps = int(user_input[CONF_TILT_STEPS])
             my_tilt_step = int(user_input[CONF_MY_TILT_STEP])
-            if (
-                cover_type == COVER_TYPE_VENETIAN
-                and my_tilt_step > tilt_steps
-            ):
+            if cover_type == COVER_TYPE_VENETIAN and my_tilt_step > tilt_steps:
                 errors["base"] = "invalid_my_tilt_step"
             else:
                 self._draft.update(
@@ -899,9 +1230,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                         CONF_COVER_TYPE: cover_type,
                         CONF_TILT_STEPS: tilt_steps,
                         CONF_MY_TILT_STEP: my_tilt_step,
-                        CONF_TILT_INVERTED: bool(
-                            user_input[CONF_TILT_INVERTED]
-                        ),
+                        CONF_TILT_INVERTED: bool(user_input[CONF_TILT_INVERTED]),
                     }
                 )
                 try:
@@ -928,9 +1257,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                     ): _number_selector(0.0, 100.0, 1.0, "%"),
                     vol.Required(
                         CONF_COVER_TYPE,
-                        default=self._draft.get(
-                            CONF_COVER_TYPE, COVER_TYPE_SHUTTER
-                        ),
+                        default=self._draft.get(CONF_COVER_TYPE, COVER_TYPE_SHUTTER),
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=[COVER_TYPE_SHUTTER, COVER_TYPE_VENETIAN],
@@ -1116,9 +1443,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                         },
                         "alias_saved",
                     )
-                    return self._save_remote_alias(
-                        remote, self._alias_shutter_ids
-                    )
+                    return self._save_remote_alias(remote, self._alias_shutter_ids)
                 except FlowError as err:
                     errors["base"] = err.key
                 except ManagerRejected as err:
@@ -1130,9 +1455,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                                 {
                                     "action": "discover",
                                     "remote": "",
-                                    "slots": self._slots_csv(
-                                        self._alias_shutter_ids
-                                    ),
+                                    "slots": self._slots_csv(self._alias_shutter_ids),
                                 },
                                 "alias_listening",
                             )
@@ -1149,9 +1472,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 {vol.Required(CONF_REMOTE_PRESSED, default=False): bool}
             ),
             errors=errors,
-            description_placeholders={
-                "count": str(len(self._alias_shutter_ids))
-            },
+            description_placeholders={"count": str(len(self._alias_shutter_ids))},
         )
 
     async def async_step_edit_group_remote(
@@ -1197,18 +1518,18 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 shutter_ids = self._selected_shutter_ids(
                     user_input.get(CONF_SHUTTER_IDS)
                 )
-                await self._runtime.async_call(
-                    "remote_alias",
-                    {
-                        "action": "set",
-                        "remote": self._alias_remote,
-                        "slots": self._slots_csv(shutter_ids),
-                    },
-                    "alias_saved",
-                )
-                return self._save_remote_alias(
-                    self._alias_remote, shutter_ids
-                )
+                local_slots = self._local_alias_slots(shutter_ids)
+                if local_slots:
+                    await self._runtime.async_call(
+                        "remote_alias",
+                        {
+                            "action": "set",
+                            "remote": self._alias_remote,
+                            "slots": ",".join(str(slot) for slot in local_slots),
+                        },
+                        "alias_saved",
+                    )
+                return self._save_remote_alias(self._alias_remote, shutter_ids)
             except FlowError as err:
                 errors["base"] = err.key
             except ManagerError:
@@ -1254,23 +1575,11 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 errors["base"] = "confirm_group_remote_removal"
             else:
                 try:
-                    await self._runtime.async_call(
-                        "remote_alias",
-                        {"action": "remove", "remote": remote, "slots": ""},
-                        "alias_removed",
-                    )
+                    await self._coordinator.async_remove_remote_alias(remote)
                     remaining = [
-                        alias
-                        for alias in aliases
-                        if alias[CONF_REMOTE] != remote
+                        alias for alias in aliases if alias[CONF_REMOTE] != remote
                     ]
-                    return self.async_create_entry(
-                        title="",
-                        data={
-                            **self.config_entry.options,
-                            CONF_REMOTE_ALIASES: remaining,
-                        },
-                    )
+                    return self._save_global_remote_aliases(remaining)
                 except ManagerError:
                     errors["base"] = "manager_unavailable"
 
@@ -1332,8 +1641,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
 
     async def _async_configure_venetian(self) -> None:
         is_venetian = (
-            self._draft.get(CONF_COVER_TYPE, COVER_TYPE_SHUTTER)
-            == COVER_TYPE_VENETIAN
+            self._draft.get(CONF_COVER_TYPE, COVER_TYPE_SHUTTER) == COVER_TYPE_VENETIAN
         )
         await self._runtime.async_call(
             "venetian",
@@ -1341,12 +1649,8 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 "slot": self._slot,
                 "enabled": is_venetian,
                 "tilt_steps": int(self._draft.get(CONF_TILT_STEPS, 12)),
-                "tilt_inverted": bool(
-                    self._draft.get(CONF_TILT_INVERTED, True)
-                ),
-                "my_tilt_step": int(
-                    self._draft.get(CONF_MY_TILT_STEP, 6)
-                ),
+                "tilt_inverted": bool(self._draft.get(CONF_TILT_INVERTED, True)),
+                "my_tilt_step": int(self._draft.get(CONF_MY_TILT_STEP, 6)),
             },
             "venetian_configured",
         )
@@ -1384,6 +1688,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
     def _save_active(self) -> config_entries.ConfigFlowResult:
         ensure_shutter_id(self._draft)
         self._draft[CONF_STATE] = STATE_ACTIVE
+        self._draft[CONF_PRIMARY_ENTRY_ID] = self.config_entry.entry_id
         replaced_slots = {self._slot}
         if self._replacing_slot is not None:
             replaced_slots.add(self._replacing_slot)

@@ -27,7 +27,10 @@
           "add_group_remote": "Afegeix un comandament físic de grup",
           "edit_group_remote": "Edita un comandament de grup",
           "remove_group_remote": "Elimina un comandament de grup",
-          "resume_attempt": "Reprèn o descarta de manera segura un intent inacabat"
+          "resume_attempt": "Reprèn o descarta de manera segura un intent inacabat",
+          "assign_secondary_bridge": "Assigna un pont transmissor secundari",
+          "move_to_bridge": "Mou una persiana a un altre pont",
+          "resume_bridge_transfer": "Reprèn un trasllat de pont interromput"
         }
       },
       "add_shutter": {
@@ -163,6 +166,31 @@
         "title": "Acaba la configuració de la persiana",
         "description": "La identitat de la persiana ja és segura a l'ESP. Torna a provar el calibratge i la còpia de seguretat finals; no es retransmetrà la vinculació.",
         "data": { "retry_setup": "Torna a provar la configuració final" }
+      },
+      "assign_secondary_bridge": {
+        "title": "Pont transmissor secundari",
+        "description": "El pont principal continua sent l'únic propietari de la identitat del controlador i del codi rodant. Només per a OBRIR, TANCAR i ATURAR, el pont secundari retransmet exactament la trama xifrada generada pel principal. MY, percentatge, inclinació, PROG i vinculació no es retransmeten mai.",
+        "data": {
+          "shutter_id": "Persiana",
+          "secondary_bridge": "Pont secundari opcional"
+        }
+      },
+      "move_to_bridge": {
+        "title": "Mou la propietat del controlador a un altre pont",
+        "description": "Aquesta transacció protegida arxiva i desactiva la identitat d'origen, la importa desactivada, l'activa a la destinació i només llavors esborra l'origen arxivat. Tots dos ponts han d'utilitzar la mateixa clau de còpia de seguretat. No s'envia cap trama PROG ni de vinculació.",
+        "data": {
+          "shutter_id": "Persiana",
+          "destination_bridge": "Pont principal nou",
+          "target_slot": "Ranura de destinació del firmware",
+          "confirm_transfer": "Entenc que tots dos ponts han d'estar en línia fins que acabi"
+        }
+      },
+      "resume_bridge_transfer": {
+        "title": "Trasllat de propietat del controlador interromput",
+        "description": "El trasllat de **{name}** està desat de manera segura a la fase `{phase}` cap a {bridge}, ranura {slot}. Continua'l o reverteix-lo si l'activació encara no ha començat. No vinculis cap identitat substituta.",
+        "data": {
+          "transfer_action": "Acció de recuperació"
+        }
       }
     },
     "error": {
@@ -187,13 +215,22 @@
       "retry_controller_test_required": "Confirma que has provat la ranura conservada i que no controla la persiana abans de repetir la vinculació.",
       "same_slot": "Tria una ranura de destinació diferent.",
       "target_slot_not_empty": "La ranura de destinació del firmware ja està ocupada. Fes servir Intercanvia dues ranures de persiana quan totes dues continguin persianes gestionades.",
-      "both_slots_must_be_active": "Totes dues ranures del firmware han de contenir persianes actives confirmades."
+      "both_slots_must_be_active": "Totes dues ranures del firmware han de contenir persianes actives confirmades.",
+      "shutter_unavailable": "Aquesta persiana ja no està disponible en aquest pont.",
+      "multibridge_firmware_required": "Tots dos ponts han d'executar el firmware multipont corresponent.",
+      "confirm_bridge_transfer": "Confirma el trasllat protegit de propietat abans de continuar.",
+      "transfer_already_pending": "Acaba o reverteix primer el trasllat de pont existent.",
+      "bridge_transfer_rejected": "El firmware ha rebutjat el trasllat perquè l'estat de seguretat no coincidia.",
+      "bridge_transfer_interrupted": "El trasllat està desat de manera segura però no ha acabat. Torna a obrir Configura i tria Reprèn un trasllat de pont interromput."
     },
     "abort": {
       "no_pending_attempts": "No hi ha intents inacabats.",
       "no_managed_shutters": "Encara no s'ha afegit cap persiana a aquest pont.",
       "no_group_remotes": "Encara no s'ha afegit cap comandament físic de grup.",
-      "not_enough_managed_shutters": "Calen almenys dues persianes gestionades per intercanviar ranures."
+      "not_enough_managed_shutters": "Calen almenys dues persianes gestionades per intercanviar ranures.",
+      "no_other_bridges": "Afegeix primer un altre pont Somfy IO compatible i posa'l en línia.",
+      "no_pending_transfer": "No hi ha cap trasllat de pont interromput.",
+      "bridge_transfer_complete": "La propietat del controlador s'ha traslladat de manera segura. La destinació és ara l'únic propietari transmissor."
     }
   },
   "selector": {
@@ -202,6 +239,12 @@
         "continue": "Continua de manera segura",
         "retry": "Torna a provar la mateixa identitat de controlador",
         "discard": "Descarta (només abans d'enviar vinculació)"
+      }
+    },
+    "transfer_action": {
+      "options": {
+        "continue": "Continua de manera segura",
+        "rollback": "Reverteix al pont d'origen"
       }
     },
     "cover_type": {

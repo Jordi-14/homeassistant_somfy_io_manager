@@ -35,6 +35,7 @@ The bidirectional 2W path is not currently supported by this manager.
 | --- | ---: | ---: | ---: | --- |
 | 0.6.x | 1 | 2026.7+ | 2026.7.4 tested | 1W roller shutters hardware validated |
 | 0.7.0b6 | 1 | 2026.7+ | 2026.7.4 tested | 1W roller and Venetian shutters hardware validated |
+| 0.8.0b1 | 1 + additive multi-bridge API | 2026.8+ | 2026.8.2 compiled | Experimental two-bridge validation build |
 
 Validated bridge hardware:
 
@@ -72,6 +73,9 @@ installation.
 - English and Catalan config flows.
 - Privacy-preserving downloadable diagnostics.
 - Support for multiple bridges when radio range requires them.
+- Optional exact-frame secondary transmission for OPEN, CLOSE, and STOP.
+- Installation-wide receiver diversity with deduplicated physical-remote events.
+- Guarded, resumable controller-ownership moves between bridges.
 
 ## Architecture
 
@@ -139,7 +143,7 @@ api:
   custom_services: true
 
 external_components:
-  - source: github://Jordi-14/esphome_somfy@4b19eb13fda60567274e86c03f28f7b4118c6ae4
+  - source: github://Jordi-14/esphome_somfy@e0b0e48c72605068033854643151c6ec2813d2b2
     components: [somfy, somfy_iohc_manager]
 
 text_sensor:
@@ -164,6 +168,11 @@ somfy_iohc_manager:
 Generate a unique 16-byte backup key and store it as exactly 32 hexadecimal
 characters. Do not reuse a controller AES key, publish the backup key, or place
 it directly in a public YAML file.
+
+Give every bridge a unique ESPHome node name and unique API/OTA credentials.
+Bridges that exchange controller ownership or exact-frame relay envelopes must
+use the same `somfy_io_backup_key`; the firmware uses it as the default relay
+key without exposing it to Home Assistant.
 
 Flash the firmware, add its ESPHome device to Home Assistant, and confirm the
 commissioning status entity reports manager API version 1 before adding this
@@ -274,9 +283,9 @@ with one of these selections:
 3. briefly press OPEN or CLOSE during the 120-second capture window;
 4. confirm the captured press.
 
-The shutter selector has no two-shutter limit. One physical group may contain
-any number of shutters managed by that bridge, and one shutter may belong to
-multiple overlapping groups. **Edit a group remote** replaces its complete
+The shutter selector has no two-shutter or one-bridge limit. One physical group
+may contain any number of shutters across the installation, and one shutter may
+belong to multiple overlapping groups. **Edit a group remote** replaces its complete
 membership; **Remove a group remote** removes only the passive synchronization
 mapping.
 
@@ -292,8 +301,10 @@ This operation is receive-only. It sends no radio frame, does not use PROG, and
 does not consume a motor pairing slot. The bridge continues to control each
 shutter independently with its own paired identity; the group mapping only
 applies one received physical command to every assigned Home Assistant state
-estimate. Membership follows shutters through slot moves and swaps and Home
-Assistant restores it if the bridge firmware or hardware is replaced.
+estimate. Membership follows shutters through slot moves, swaps, and
+bridge-ownership moves. Home Assistant projects each global group onto the
+appropriate local slots and restores it if bridge firmware or hardware is
+replaced.
 
 ## Position and MY behaviour
 
@@ -313,6 +324,35 @@ from calibrated travel time and corrected at full end stops:
 
 If position gradually drifts, run the shutter fully to an end stop and verify
 the configured opening and closing times.
+
+## Multiple bridges
+
+Add every ESPHome radio as its own Somfy IO Shutter Manager config entry. The
+integration then coordinates them as one installation:
+
+- every bridge listens for physical remotes;
+- duplicate copies of the same rolling-sequence gesture are delivered once;
+- if the owner missed a received command, it gets an estimator-only update that
+  cannot transmit RF;
+- each shutter may have an optional secondary bridge for exact-frame OPEN,
+  CLOSE, and STOP redundancy;
+- controller ownership can be moved to an empty slot on another bridge without
+  pairing a new identity.
+
+Configure a relay under **Assign a secondary transmitting bridge** in the
+shutter's owning entry. MY, intermediate position, tilt, pairing, and PROG are
+always primary-only. If the secondary is unavailable, the primary continues
+normally.
+
+Use **Move a shutter to another bridge** to change the primary. The guarded
+transaction disables and archives the source, imports the identity disabled,
+activates the destination, and finally erases the archived source. If it is
+interrupted, reopen Configure and use **Resume an interrupted bridge transfer**;
+do not pair another controller. Entity IDs may be recreated after a primary
+move, so review automations afterward.
+
+See the [multi-bridge design and validation guide](docs/future-multi-bridge.md)
+for the exact safety model and two-radio test checklist.
 
 ## Recovery and ownership
 
@@ -395,14 +435,10 @@ service/entity IDs. Review the file before attaching it to an issue.
 
 ## Future work
 
-A future multi-bridge project would extend the current MY-only queue into a
-general per-bridge RF transaction scheduler, stagger transmissions across
-ESPs, and use every bridge as a passive receiver. Home Assistant could then
-deduplicate the same physical press heard by several radios and forward one
-receive-only estimator update to the shutter's owning bridge. Transmitting
-controller identities would remain strictly single-owner; receiver diversity
-must never become rolling-code failover. See
-[the multi-bridge design notes](docs/future-multi-bridge.md).
+The remaining multi-bridge work is broader hardware validation, partial
+Venetian-evidence correlation, and moving firmware-timed intermediate STOPs into
+a fully bridge-aware transaction scheduler. The controller identity remains
+strictly single-owner; receiver diversity never becomes rolling-code failover.
 
 ## Development
 

@@ -26,6 +26,11 @@ from .entity import (
 from .runtime import SomfyIOManagerRuntime, parse_status
 
 _REMOTE_COMMAND_NAMES = {
+    "OPEN": "Open",
+    "CLOSE": "Close",
+    "STOP_MY": "Stop/MY",
+    "TILT_CLOCKWISE": "Tilt clockwise",
+    "TILT_COUNTERCLOCKWISE": "Tilt counterclockwise",
     "0X0000": "Open",
     "0XC800": "Close",
     "0XD200": "Stop/MY",
@@ -66,11 +71,11 @@ class SomfyRemoteSensor(SensorEntity):
     ) -> None:
         self._runtime = runtime
         self._slot = int(shutter[CONF_SLOT])
+        self._shutter_id = ensure_shutter_id(shutter)
         self._area_id = shutter.get(CONF_AREA_ID)
         self._attr_name = "Detected remote"
         cover_object_id = shutter_object_id(shutter)
-        shutter_id = ensure_shutter_id(shutter)
-        self._attr_unique_id = f"{entry.entry_id}-{shutter_id}-remote"
+        self._attr_unique_id = f"{entry.entry_id}-{self._shutter_id}-remote"
         self._attr_suggested_object_id = f"{cover_object_id}_detected_remote"
         self._attr_device_info = shutter_device_info(entry, shutter)
         self._attr_extra_state_attributes = {}
@@ -83,6 +88,11 @@ class SomfyRemoteSensor(SensorEntity):
             self.hass, self._runtime.status_entity_id, self._status_changed
         )
         self.async_on_remove(self._remove_listener)
+        self.async_on_remove(
+            self._runtime.coordinator.subscribe(
+                self._shutter_id, self._observation_received
+            )
+        )
 
         configure_shutter_entity(
             self.hass,
@@ -92,6 +102,7 @@ class SomfyRemoteSensor(SensorEntity):
 
     @callback
     def _status_changed(self, event: Event) -> None:
+        """Retain the single-bridge event path for older compatible firmware."""
         new_state = event.data.get("new_state")
         status = parse_status(new_state.state if new_state else None)
         target_slots = status.get("slots") if status is not None else None
@@ -106,11 +117,26 @@ class SomfyRemoteSensor(SensorEntity):
             or not matches_slot
         ):
             return
-        raw_command = str(status.get("detail") or "")
+        self._apply_observation(status)
+
+    @callback
+    def _observation_received(self, status: dict) -> None:
+        """Display one installation-wide deduplicated physical gesture."""
+        self._apply_observation(status)
+
+    @callback
+    def _apply_observation(self, status: dict) -> None:
+        raw_command = str(status.get("command") or status.get("detail") or "")
         command_name = _REMOTE_COMMAND_NAMES.get(raw_command.upper(), "Unknown")
         step_count = status.get("steps")
         if (
-            raw_command.upper() in {"0XF00D", "0XF00E"}
+            raw_command.upper()
+            in {
+                "0XF00D",
+                "0XF00E",
+                "TILT_CLOCKWISE",
+                "TILT_COUNTERCLOCKWISE",
+            }
             and isinstance(step_count, int)
             and not isinstance(step_count, bool)
             and step_count > 1
@@ -120,7 +146,10 @@ class SomfyRemoteSensor(SensorEntity):
         self._attr_extra_state_attributes = {
             "remote_id": status.get("remote"),
             "raw_command": raw_command,
-            "event": status.get("event"),
+            "sequence": status.get("sequence"),
             "steps": step_count,
+            "strongest_bridge": status.get("source_bridge"),
+            "heard_by_bridges": status.get("heard_by"),
+            "rssi": status.get("rssi"),
         }
         self.async_write_ha_state()

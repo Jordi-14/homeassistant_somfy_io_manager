@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.0b1
+
+- Coordinate any number of configured ESPHome radio bridges as one installation.
+- Deduplicate physical-remote observations across receivers, retain the strongest
+  source, and forward only estimator updates when the owning bridge missed RF.
+- Add optional exact-frame OPEN/CLOSE/STOP retransmission through one secondary
+  bridge without copying controller keys or advancing another rolling stream.
+- Add GUI-managed secondary assignments and guarded primary ownership moves with
+  firmware-journal reconciliation, pre-transfer STOP, rollback before activation,
+  and resumable cleanup afterward.
+- Promote physical remote groups to a global cross-entry directory and privately
+  hydrate remote IDs missing from legacy Home Assistant metadata.
+- Serialize HA-originated RF transactions installation-wide and wait for native
+  MY and Venetian tilt completion before another bridge transmits.
+
 ## 0.7.0b6
 
 - Queue simultaneous MY requests on the bridge so each shutter receives its

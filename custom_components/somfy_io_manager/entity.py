@@ -56,3 +56,23 @@ def configure_shutter_entity(
 
     if entry.device_id is not None:
         dr.async_get(hass).async_update_device(entry.device_id, area_id=area_id)
+
+
+def remove_shutter_registry_rows(
+    hass: HomeAssistant, entry: ConfigEntry, shutter: dict
+) -> None:
+    """Remove old owner rows so a transferred shutter can reclaim its names."""
+    shutter_id = ensure_shutter_id(shutter)
+    prefix = f"{entry.entry_id}-{shutter_id}-"
+    entity_registry = er.async_get(hass)
+    for entity in list(
+        er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    ):
+        if str(entity.unique_id).startswith(prefix):
+            entity_registry.async_remove(entity.entity_id)
+    device_registry = dr.async_get(hass)
+    device = device_registry.async_get_device(
+        identifiers={shutter_device_identifier(entry, shutter)}
+    )
+    if device is not None:
+        device_registry.async_remove_device(device.id)

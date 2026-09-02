@@ -16,13 +16,16 @@ from .const import (
     CONF_MY_PERCENT,
     CONF_MY_TILT_STEP,
     CONF_OPEN_SECONDS,
+    CONF_PRIMARY_ENTRY_ID,
     CONF_REMOTE_ALIASES,
+    CONF_SECONDARY_ENTRY_ID,
     CONF_SHUTTERS,
     CONF_SLOT,
     CONF_STATE,
     CONF_STATUS_ENTITY_ID,
     CONF_TILT_INVERTED,
     CONF_TILT_STEPS,
+    DATA_COORDINATOR,
     DATA_RUNTIME,
     DOMAIN,
     MANAGER_API_VERSION,
@@ -40,6 +43,10 @@ _SERVICE_SUFFIXES = (
     "swap",
     "venetian",
     "remote_alias",
+    "redundant_control",
+    "relay",
+    "observe",
+    "transfer",
 )
 _SAFE_STATUS_FIELDS = ("v", "event", "action", "slot", "state", "rssi")
 
@@ -51,6 +58,7 @@ async def async_get_config_entry_diagnostics(
     """Return diagnostics without identities, keys, or recovery payloads."""
     runtime_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     runtime = runtime_data.get(DATA_RUNTIME) if runtime_data else None
+    coordinator = hass.data.get(DOMAIN, {}).get(DATA_COORDINATOR)
     status_state = hass.states.get(entry.data[CONF_STATUS_ENTITY_ID])
     backup_state = hass.states.get(entry.data[CONF_BACKUP_ENTITY_ID])
     status = parse_status(status_state.state if status_state else None)
@@ -68,19 +76,29 @@ async def async_get_config_entry_diagnostics(
             "services": _service_availability(hass, entry.data[CONF_DEVICE_NAME]),
             "last_status": _sanitized_manager_status(status),
             "receive_pipeline": receive_pipeline,
+            "multi_bridge": (
+                coordinator.diagnostics_for(entry.entry_id)
+                if coordinator is not None
+                else {"loaded_bridges": 0}
+            ),
         },
     }
 
     shutters = entry.options.get(CONF_SHUTTERS, [])
     diagnostics["shutters"] = {
         "count": len(shutters),
-        "active": sum(
-            shutter.get(CONF_STATE) == STATE_ACTIVE for shutter in shutters
-        ),
+        "active": sum(shutter.get(CONF_STATE) == STATE_ACTIVE for shutter in shutters),
         "uncertain": sum(
             shutter.get(CONF_STATE) == STATE_UNCERTAIN for shutter in shutters
         ),
-        "slots": _shutter_diagnostics(shutters, runtime),
+        "slots": _shutter_diagnostics(shutters, runtime, entry.entry_id, coordinator),
+    }
+    pending_transfer = runtime.pending_transfer if runtime is not None else None
+    diagnostics["bridge_transfer"] = {
+        "pending": pending_transfer is not None,
+        "phase": (
+            pending_transfer.get("phase") if pending_transfer is not None else None
+        ),
     }
     aliases = entry.options.get(CONF_REMOTE_ALIASES, [])
     diagnostics["group_remotes"] = {
@@ -145,9 +163,7 @@ def _service_availability(
     """Report the manager API surface without exposing generated service IDs."""
     prefix = device_name.replace("-", "_")
     return {
-        suffix: hass.services.has_service(
-            "esphome", f"{prefix}_somfy_{suffix}"
-        )
+        suffix: hass.services.has_service("esphome", f"{prefix}_somfy_{suffix}")
         for suffix in _SERVICE_SUFFIXES
     }
 
@@ -166,6 +182,8 @@ def _sanitized_manager_status(status: dict[str, Any] | None) -> dict[str, Any] |
 def _shutter_diagnostics(
     shutters: list[dict[str, Any]],
     runtime: SomfyIOManagerRuntime | None,
+    entry_id: str,
+    coordinator: Any,
 ) -> list[dict[str, Any]]:
     """Return anonymous configuration and recovery health for each slot."""
     pending_slots = set(runtime.pending) if runtime is not None else set()
@@ -187,6 +205,16 @@ def _shutter_diagnostics(
                     runtime is not None and runtime.backup_for_slot(slot) is not None
                 ),
                 "commissioning_pending": slot in pending_slots,
+                "primary_on_this_bridge": shutter.get(CONF_PRIMARY_ENTRY_ID, entry_id)
+                == entry_id,
+                "secondary_configured": isinstance(
+                    shutter.get(CONF_SECONDARY_ENTRY_ID), str
+                ),
+                "secondary_online": (
+                    coordinator is not None
+                    and coordinator.runtime_for(shutter.get(CONF_SECONDARY_ENTRY_ID))
+                    is not None
+                ),
             }
         )
     return result
