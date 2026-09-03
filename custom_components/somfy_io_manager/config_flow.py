@@ -781,11 +781,12 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         self.hass.config_entries.async_update_entry(
             destination.entry, options=destination_options
         )
-        self.hass.config_entries.async_update_entry(
-            self.config_entry, options=source_options
-        )
-        await self._runtime.async_set_pending_transfer(None)
-        return self.async_abort(reason="bridge_transfer_complete")
+        # Let Home Assistant finish this options flow and update its own entry.
+        # Updating the current entry directly reloads it underneath the open
+        # flow, which turns an otherwise successful transfer into an unknown
+        # UI error. Keep the active journal until the post-reload reconciler
+        # proves that both entries contain the final metadata, then clear it.
+        return self.async_create_entry(title="", data=source_options)
 
     async def async_step_add_shutter(
         self, user_input: dict[str, Any] | None = None

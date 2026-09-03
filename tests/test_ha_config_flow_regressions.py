@@ -329,6 +329,24 @@ def test_cross_bridge_move_removes_old_registry_rows_before_reload():
     assert "remove_shutter_registry_rows" in transfer
 
 
+def test_cross_bridge_move_lets_options_flow_commit_its_own_entry():
+    transfer = FLOW_SOURCE.split("async def _async_finish_bridge_transfer", 1)[1]
+    transfer = transfer.split("async def async_step_add_shutter", 1)[0]
+    assert "destination.entry, options=destination_options" in transfer
+    assert "self.config_entry, options=source_options" not in transfer
+    assert 'return self.async_create_entry(title="", data=source_options)' in transfer
+    assert "async_set_pending_transfer(None)" not in transfer
+
+
+def test_active_transfer_journal_clears_only_after_metadata_converges():
+    coordinator = (INTEGRATION_ROOT / "coordinator.py").read_text()
+    reconcile = coordinator.split("async def async_reconcile_runtime_transfer", 1)[1]
+    reconcile = reconcile.split("async def _async_reconcile_transfer", 1)[0]
+    assert 'reconciled.get("phase") == "active"' in reconcile
+    assert "transfer_metadata_committed(" in reconcile
+    assert "await source.async_set_pending_transfer(None)" in reconcile
+
+
 def test_legacy_missing_remote_is_privately_hydrated_from_owner_slot():
     init_source = (INTEGRATION_ROOT / "__init__.py").read_text()
     hydrate = init_source.split("async def _async_hydrate_remote_metadata", 1)[1]

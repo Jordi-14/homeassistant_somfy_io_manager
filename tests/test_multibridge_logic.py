@@ -23,6 +23,7 @@ prefer_candidate = LOGIC.prefer_candidate
 relay_allowed = LOGIC.relay_allowed
 resolve_remote_target_ids = LOGIC.resolve_remote_target_ids
 transfer_next_action = LOGIC.transfer_next_action
+transfer_metadata_committed = LOGIC.transfer_metadata_committed
 status_response_is_new = LOGIC.status_response_is_new
 terminal_supersedes_prefix = LOGIC.terminal_supersedes_prefix
 
@@ -88,6 +89,46 @@ def test_transfer_order_never_activates_two_owners() -> None:
     assert transfer_next_action("activated") == "commit"
     assert transfer_next_action("committed") == "finalize"
     assert transfer_next_action("active") is None
+
+
+def test_completed_transfer_metadata_must_converge_before_journal_cleanup() -> None:
+    transfer = {
+        "source_entry_id": "source",
+        "destination_entry_id": "destination",
+        "destination_slot": 15,
+        "shutter": {"shutter_id": "bathroom"},
+    }
+    moved = {
+        "shutter_id": "bathroom",
+        "slot": 15,
+        "primary_entry_id": "destination",
+        "state": "active",
+    }
+    assert transfer_metadata_committed(
+        "source", "destination", [], [moved], transfer
+    )
+    assert not transfer_metadata_committed(
+        "source", "destination", [moved], [moved], transfer
+    )
+    assert not transfer_metadata_committed(
+        "source", "destination", [], [{**moved, "slot": 14}], transfer
+    )
+    assert not transfer_metadata_committed(
+        "source",
+        "destination",
+        [],
+        [{**moved, "primary_entry_id": "source"}],
+        transfer,
+    )
+    assert not transfer_metadata_committed(
+        "source", "destination", [], [], transfer
+    )
+    assert not transfer_metadata_committed(
+        "source", "destination", [], [moved, dict(moved)], transfer
+    )
+    assert not transfer_metadata_committed(
+        "source", "destination", [], [{**moved, "state": "staged"}], transfer
+    )
 
 
 def test_remote_normalization_rejects_malformed_private_ids() -> None:

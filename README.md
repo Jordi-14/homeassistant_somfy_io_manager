@@ -36,6 +36,7 @@ The bidirectional 2W path is not currently supported by this manager.
 | 0.6.x | 1 | 2026.7+ | 2026.7.4 tested | 1W roller shutters hardware validated |
 | 0.7.0b6 | 1 | 2026.7+ | 2026.7.4 tested | 1W roller and Venetian shutters hardware validated |
 | 0.8.0b1 | 1 + additive multi-bridge API | 2026.8+ | 2026.8.2 compiled | Experimental two-bridge validation build |
+| 0.8.0b2 | 1 + additive multi-bridge API | 2026.8+ | 2026.8.2 tested | Multi-bridge ownership-flow recovery fix |
 
 Validated bridge hardware:
 

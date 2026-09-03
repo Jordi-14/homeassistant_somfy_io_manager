@@ -35,6 +35,7 @@ from .multibridge_logic import (
     relay_allowed,
     resolve_remote_target_ids,
     terminal_supersedes_prefix,
+    transfer_metadata_committed,
 )
 from .runtime import ManagerError, ManagerRejected, ManagerUnavailable
 
@@ -774,7 +775,16 @@ class SomfyIOMultiBridgeCoordinator:
             reconciled = await self._async_reconcile_transfer(
                 source, destination, transfer
             )
-            await source.async_set_pending_transfer(reconciled)
+            if reconciled.get("phase") == "active" and transfer_metadata_committed(
+                source.entry.entry_id,
+                destination.entry.entry_id,
+                list(source.entry.options.get(CONF_SHUTTERS, [])),
+                list(destination.entry.options.get(CONF_SHUTTERS, [])),
+                reconciled,
+            ):
+                await source.async_set_pending_transfer(None)
+            else:
+                await source.async_set_pending_transfer(reconciled)
 
     async def _async_reconcile_transfer(
         self, source: Any, destination: Any, transfer: dict[str, Any]

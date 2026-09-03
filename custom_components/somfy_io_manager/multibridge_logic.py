@@ -91,6 +91,50 @@ def transfer_next_action(phase: str) -> str | None:
     }.get(phase)
 
 
+def transfer_metadata_committed(
+    source_entry_id: str,
+    destination_entry_id: str,
+    source_shutters: list[dict[str, Any]],
+    destination_shutters: list[dict[str, Any]],
+    transfer: dict[str, Any],
+) -> bool:
+    """Confirm that HA metadata reflects a completed firmware transfer."""
+    shutter = transfer.get("shutter")
+    if not isinstance(shutter, dict):
+        return False
+    shutter_id = shutter.get("shutter_id")
+    if (
+        not isinstance(shutter_id, str)
+        or not shutter_id
+        or transfer.get("source_entry_id") != source_entry_id
+        or transfer.get("destination_entry_id") != destination_entry_id
+    ):
+        return False
+    try:
+        destination_slot = int(transfer["destination_slot"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    if any(item.get("shutter_id") == shutter_id for item in source_shutters):
+        return False
+    matches = [
+        item
+        for item in destination_shutters
+        if item.get("shutter_id") == shutter_id
+    ]
+    if len(matches) != 1:
+        return False
+    moved = matches[0]
+    try:
+        stored_slot = int(moved.get("slot"))
+    except (TypeError, ValueError):
+        return False
+    return (
+        stored_slot == destination_slot
+        and moved.get("primary_entry_id") == destination_entry_id
+        and moved.get("state") == "active"
+    )
+
+
 def status_response_is_new(
     before_raw: str | None,
     before_event: Any,

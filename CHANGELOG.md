@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0b2
+
+- Finish controller-ownership moves through Home Assistant's supported options
+   flow result instead of reloading the source entry underneath its open flow.
+- Prevent a successfully completed firmware transfer from appearing as an
+  `Unknown error` or leaving the next ownership move blocked.
+- Retain the terminal transfer journal until post-reload reconciliation proves
+  that the source and destination metadata both describe the new sole owner.
+- Automatically clear terminal journals left by 0.8.0b1 when firmware and Home
+  Assistant metadata already agree, without transmitting RF or changing a
+  controller identity.
+
 ## 0.8.0b1
 
 - Coordinate any number of configured ESPHome radio bridges as one installation.
