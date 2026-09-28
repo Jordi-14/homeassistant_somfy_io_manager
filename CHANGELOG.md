@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.2
+
+- Update GitHub Actions checkout and Python setup to version 7.
+
 ## 0.6.1
 
 - Add privacy-preserving Home Assistant diagnostics.
