@@ -106,6 +106,7 @@ class SomfyManagedCover(CoverEntity):
             self._attr_supported_features |= self._TILT_FEATURES
         self._area_id = shutter.get(CONF_AREA_ID)
         self._transport_entity_id = transport_entity_id
+        self._remove_transport_listener = None
         self._attr_unique_id = f"{entry.entry_id}-{shutter_id}-cover"
         self._attr_suggested_object_id = object_id
         self._attr_device_info = shutter_device_info(entry, shutter)
@@ -120,16 +121,60 @@ class SomfyManagedCover(CoverEntity):
             entity_id=self.entity_id,
             area_id=self._area_id,
         )
-        if self._transport_entity_id is None:
-            return
         self.async_on_remove(
             async_track_state_change_event(
-                self.hass, self._transport_entity_id, self._transport_changed
+                self.hass, self._runtime.status_entity_id, self._bridge_changed
             )
         )
+        self.async_on_remove(self._unbind_transport)
+        self._bind_transport()
         self._apply_transport_state(
-            self.hass.states.get(self._transport_entity_id), write=False
+            (
+                self.hass.states.get(self._transport_entity_id)
+                if self._transport_entity_id is not None
+                else None
+            ),
+            write=False,
         )
+
+    @callback
+    def _bind_transport(self) -> None:
+        """Resolve and follow the current ESPHome transport entity."""
+        transport = find_transport_cover(
+            er.async_get(self.hass),
+            self._runtime.esphome_entry_id,
+            int(self._shutter[CONF_SLOT]),
+        )
+        entity_id = transport.entity_id if transport is not None else None
+        if (
+            entity_id == self._transport_entity_id
+            and self._remove_transport_listener is not None
+        ):
+            return
+        self._unbind_transport()
+        self._transport_entity_id = entity_id
+        if entity_id is not None:
+            self._remove_transport_listener = async_track_state_change_event(
+                self.hass, entity_id, self._transport_changed
+            )
+
+    @callback
+    def _unbind_transport(self) -> None:
+        """Remove the current transport-state listener."""
+        if self._remove_transport_listener is not None:
+            self._remove_transport_listener()
+            self._remove_transport_listener = None
+
+    @callback
+    def _bridge_changed(self, _event: Event) -> None:
+        """Rebind transports that appeared after the managed cover loaded."""
+        self._bind_transport()
+        state = (
+            self.hass.states.get(self._transport_entity_id)
+            if self._transport_entity_id is not None
+            else None
+        )
+        self._apply_transport_state(state, write=True)
 
     @callback
     def _transport_changed(self, event: Event) -> None:
@@ -139,7 +184,10 @@ class SomfyManagedCover(CoverEntity):
     @callback
     def _apply_transport_state(self, state, *, write: bool) -> None:
         if state is None or state.state == STATE_UNAVAILABLE:
-            self._attr_available = False
+            # Control uses the manager API rather than the raw cover service.
+            # If the bridge status transport is healthy, remain controllable
+            # while a late ESPHome entity is discovered or rebound.
+            self._attr_available = self._runtime.available
             self._attr_is_opening = False
             self._attr_is_closing = False
             self._attr_is_closed = None

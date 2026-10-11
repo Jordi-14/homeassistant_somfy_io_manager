@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0b4
+
+- Rebind managed covers when ESPHome transport entities appear after the Somfy
+  platform has already loaded, including after hardware replacement and
+  config-entry reload ordering changes.
+- Use the online manager status transport as a safe control-availability
+  fallback while the separate position transport is being discovered.
+
 ## 0.8.0b3
 
 - Keep a managed shutter available when its online ESPHome time-based

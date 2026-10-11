@@ -206,6 +206,18 @@ def test_unknown_transport_position_remains_available():
     assert "self._attr_current_cover_tilt_position = None" in unknown_branch
 
 
+def test_managed_cover_rebinds_late_esphome_transport():
+    """A platform loaded before ESPHome entities must recover without restart."""
+    assert "self._runtime.status_entity_id, self._bridge_changed" in COVER_SOURCE
+    assert "def _bind_transport" in COVER_SOURCE
+    assert "self._runtime.esphome_entry_id" in COVER_SOURCE
+    assert "int(self._shutter[CONF_SLOT])" in COVER_SOURCE
+    missing_branch = COVER_SOURCE.split(
+        "if state is None or state.state == STATE_UNAVAILABLE", 1
+    )[1].split("elif state.state == STATE_UNKNOWN", 1)[0]
+    assert "self._attr_available = self._runtime.available" in missing_branch
+
+
 def test_my_button_uses_installation_coordinator_for_atomic_completion():
     root = Path(__file__).parent.parent
     button_platform = (
