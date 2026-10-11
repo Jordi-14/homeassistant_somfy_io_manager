@@ -27,6 +27,12 @@ SENSOR_SOURCE = (
     / "somfy_io_manager"
     / "sensor.py"
 ).read_text()
+COVER_SOURCE = (
+    Path(__file__).parent.parent
+    / "custom_components"
+    / "somfy_io_manager"
+    / "cover.py"
+).read_text()
 INTEGRATION_ROOT = (
     Path(__file__).parent.parent / "custom_components" / "somfy_io_manager"
 )
@@ -184,6 +190,20 @@ def test_shutter_controls_are_grouped_as_somfy_entities():
     assert "shutter_device_info(entry, shutter)" in button_platform
     assert "shutter_device_info(entry, shutter)" in sensor_platform
     assert "via_device" not in shared_entity
+
+
+def test_unknown_transport_position_remains_available():
+    """Unknown position is not the same as a disconnected ESPHome cover."""
+    function = COVER_SOURCE.split("def _apply_transport_state", 1)[1]
+    function = function.split("async def _async_control", 1)[0]
+
+    assert "state is None or state.state == STATE_UNAVAILABLE" in function
+    assert "state.state == STATE_UNKNOWN" in function
+    unknown_branch = function.split("state.state == STATE_UNKNOWN", 1)[1]
+    unknown_branch = unknown_branch.split("else:", 1)[0]
+    assert "self._attr_available = True" in unknown_branch
+    assert "self._attr_current_cover_position = None" in unknown_branch
+    assert "self._attr_current_cover_tilt_position = None" in unknown_branch
 
 
 def test_my_button_uses_installation_coordinator_for_atomic_completion():

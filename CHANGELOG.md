@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0b3
+
+- Keep a managed shutter available when its online ESPHome time-based
+  transport reports `unknown` because no post-boot position reference exists.
+- Reserve the unavailable state for a missing or genuinely disconnected
+  transport, while clearing stale position and tilt estimates when position is
+  unknown.
+
 ## 0.8.0b2
 
 - Finish controller-ownership moves through Home Assistant's supported options

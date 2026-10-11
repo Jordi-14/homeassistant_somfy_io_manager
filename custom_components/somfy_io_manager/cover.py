@@ -138,11 +138,23 @@ class SomfyManagedCover(CoverEntity):
 
     @callback
     def _apply_transport_state(self, state, *, write: bool) -> None:
-        if state is None or state.state in {STATE_UNAVAILABLE, STATE_UNKNOWN}:
+        if state is None or state.state == STATE_UNAVAILABLE:
             self._attr_available = False
             self._attr_is_opening = False
             self._attr_is_closing = False
             self._attr_is_closed = None
+        elif state.state == STATE_UNKNOWN:
+            # An ESPHome time-based cover can be online and controllable while
+            # its position estimator has no post-boot reference. Home Assistant
+            # uses `unknown` for that state; only `unavailable` means the
+            # transport itself is offline.
+            self._attr_available = True
+            self._attr_is_opening = False
+            self._attr_is_closing = False
+            self._attr_is_closed = None
+            self._attr_current_cover_position = None
+            if self._is_venetian:
+                self._attr_current_cover_tilt_position = None
         else:
             self._attr_available = True
             self._attr_is_opening = state.state == CoverState.OPENING
