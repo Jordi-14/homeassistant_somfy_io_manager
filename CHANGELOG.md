@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0
+
+- Coordinate multiple ESPHome radio bridges as one Somfy IO installation,
+  including global command serialization and deduplicated physical-remote
+  reception across every online receiver.
+- Support an optional secondary transmitter for repeat-safe OPEN, CLOSE and
+  STOP commands while keeping non-idempotent MY and tilt gestures on the
+  primary controller only.
+- Add guarded GUI workflows for changing primary bridge ownership, assigning
+  secondary bridges and recovering interrupted transfers without retransmitting
+  PROG or consuming another shutter pairing.
+- Preserve managed cover availability across ESPHome startup ordering, unknown
+  post-boot positions and Home Assistant 2026.10 device-area validation.
+- Promote the functionality verified through `0.8.0b1`–`0.8.0b5` to the first
+  stable multi-bridge release.
+
 ## 0.8.0b5
 
 - Restore managed shutter entities on Home Assistant 2026.10 by assigning each
