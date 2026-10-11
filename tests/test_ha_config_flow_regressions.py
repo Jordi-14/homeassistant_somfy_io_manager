@@ -192,6 +192,24 @@ def test_shutter_controls_are_grouped_as_somfy_entities():
     assert "via_device" not in shared_entity
 
 
+def test_device_backed_entities_inherit_area_from_their_device():
+    """HA 2026.10 rejects own areas on unnamed device-backed entities."""
+    source = (
+        Path(__file__).parent.parent
+        / "custom_components"
+        / "somfy_io_manager"
+        / "entity.py"
+    ).read_text()
+    function = source.split("def configure_shutter_entity", 1)[1]
+    function = function.split("def remove_shutter_registry_rows", 1)[0]
+
+    device_branch = function.split("if entry.device_id is not None:", 1)[1]
+    assert "async_update_device(entry.device_id, area_id=area_id)" in device_branch
+    assert "return" in device_branch.split(
+        "registry.async_update_entity(entity_id, area_id=area_id)", 1
+    )[0]
+
+
 def test_unknown_transport_position_remains_available():
     """Unknown position is not the same as a disconnected ESPHome cover."""
     function = COVER_SOURCE.split("def _apply_transport_state", 1)[1]

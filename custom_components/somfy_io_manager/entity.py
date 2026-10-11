@@ -50,12 +50,17 @@ def configure_shutter_entity(
     entity_id: str,
     area_id: str | None,
 ) -> None:
-    """Assign a shutter entity and its device to the configured area."""
+    """Assign a shutter device, or a standalone entity, to the configured area."""
     registry = er.async_get(hass)
-    entry = registry.async_update_entity(entity_id, area_id=area_id)
+    entry = registry.async_get(entity_id)
+    if entry is None:
+        return
 
     if entry.device_id is not None:
         dr.async_get(hass).async_update_device(entry.device_id, area_id=area_id)
+        return
+
+    registry.async_update_entity(entity_id, area_id=area_id)
 
 
 def remove_shutter_registry_rows(

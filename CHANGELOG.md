@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0b5
+
+- Restore managed shutter entities on Home Assistant 2026.10 by assigning each
+  configured area to the shutter device instead of redundantly assigning it to
+  its unnamed child entities. Home Assistant now rejects that entity-level area
+  assignment during setup, which left every shutter with an area unavailable.
+
 ## 0.8.0b4
 
 - Rebind managed covers when ESPHome transport entities appear after the Somfy
