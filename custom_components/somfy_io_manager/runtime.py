@@ -10,6 +10,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 
@@ -30,16 +31,30 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-class ManagerError(Exception):
+class ManagerError(HomeAssistantError):
     """Base error raised by the commissioning bridge."""
+
+    _error_translation_key = "manager_error"
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(
+            detail,
+            translation_domain=DOMAIN,
+            translation_key=self._error_translation_key,
+            translation_placeholders={"detail": detail},
+        )
 
 
 class ManagerUnavailable(ManagerError):
     """The ESPHome manager or one of its entities is unavailable."""
 
+    _error_translation_key = "manager_unavailable"
+
 
 class ManagerRejected(ManagerError):
     """The ESPHome manager rejected an operation."""
+
+    _error_translation_key = "manager_rejected"
 
     def __init__(self, detail: str) -> None:
         super().__init__(detail)
@@ -238,8 +253,7 @@ class SomfyIOManagerRuntime:
             if requested_slots and status.get("slot") not in requested_slots:
                 return
             if (
-                status.get("action") in expected
-                or status.get("action") == "error"
+                status.get("action") in expected or status.get("action") == "error"
             ) and not future.done():
                 future.set_result(status)
 

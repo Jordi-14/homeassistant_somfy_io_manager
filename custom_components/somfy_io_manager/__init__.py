@@ -11,7 +11,6 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later
 
 from .const import (
-    CONF_DEVICE_NAME,
     CONF_SHUTTERS,
     CONF_SLOT,
     CONF_STATE,
@@ -20,8 +19,8 @@ from .const import (
     PLATFORMS,
     STATE_ACTIVE,
 )
-from .entity import ensure_shutter_id
-from .entity_migration import reconcile_transport_entities
+from .entity import ensure_shutter_id, initialize_shutter_device
+from .entity_migration import find_transport_cover
 from .runtime import SomfyIOManagerRuntime
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,7 +61,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {DATA_RUNTIME: runtime}
 
     _remove_obsolete_bridge_device(hass, entry)
-    _reconcile_transports(hass, entry, runtime)
+    for shutter in entry.options.get(CONF_SHUTTERS, []):
+        if shutter.get(CONF_STATE) == STATE_ACTIVE:
+            initialize_shutter_device(hass, entry, shutter)
+    _wait_for_transport_covers(hass, entry, runtime)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True
@@ -86,33 +88,37 @@ async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 def _remove_obsolete_bridge_device(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove the former empty manager hub; ESPHome remains the bridge device."""
     registry = dr.async_get(hass)
-    bridge = registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    devices = dr.async_entries_for_config_entry(registry, entry.entry_id)
+    bridge = next(
+        (device for device in devices if (DOMAIN, entry.entry_id) in device.identifiers),
+        None,
+    )
     if bridge is None:
         return
-    for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+    for device in devices:
         if device.id != bridge.id and device.via_device_id == bridge.id:
             registry.async_update_device(device.id, via_device_id=None)
     registry.async_remove_device(bridge.id)
 
 
-def _reconcile_transports(
+def _wait_for_transport_covers(
     hass: HomeAssistant,
     entry: ConfigEntry,
     runtime: SomfyIOManagerRuntime,
     attempt: int = 0,
 ) -> None:
-    """Hide ESPHome slot covers and keep active ones loaded as state transports."""
+    """Wait for active transports without changing ESPHome registry entries."""
     active_slots = {
         int(shutter[CONF_SLOT])
         for shutter in entry.options.get(CONF_SHUTTERS, [])
         if shutter.get(CONF_STATE) == STATE_ACTIVE
     }
-    found = reconcile_transport_entities(
-        er.async_get(hass),
-        esphome_entry_id=runtime.esphome_entry_id,
-        device_name=entry.data[CONF_DEVICE_NAME],
-        active_slots=active_slots,
-    )
+    registry = er.async_get(hass)
+    found = {
+        slot
+        for slot in active_slots
+        if find_transport_cover(registry, runtime.esphome_entry_id, slot) is not None
+    }
     missing = active_slots - found
     if not missing:
         if attempt:
@@ -131,6 +137,6 @@ def _reconcile_transports(
     cancel = async_call_later(
         hass,
         5,
-        lambda _now: _reconcile_transports(hass, entry, runtime, attempt + 1),
+        lambda _now: _wait_for_transport_covers(hass, entry, runtime, attempt + 1),
     )
     entry.async_on_unload(cancel)

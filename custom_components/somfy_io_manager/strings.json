@@ -1,5 +1,16 @@
 {
   "title": "Somfy IO Shutter Manager",
+  "exceptions": {
+    "manager_error": {
+      "message": "The Somfy bridge could not complete the action: {detail}."
+    },
+    "manager_unavailable": {
+      "message": "The Somfy bridge is unavailable. Check that the ESPHome device is online and try again."
+    },
+    "manager_rejected": {
+      "message": "The Somfy bridge rejected the action: {detail}."
+    }
+  },
   "config": {
     "step": {
       "user": {

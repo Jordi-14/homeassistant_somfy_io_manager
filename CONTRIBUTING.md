@@ -83,7 +83,7 @@ runtime.py
 
 cover.py / button.py / sensor.py
   -> create one Somfy device per active shutter
-  -> use hidden ESPHome slot covers as position/state transports
+  -> use ESPHome slot covers as position/state transports
 ```
 
 Important rules:

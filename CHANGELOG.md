@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.3
+
+- Preserve ESPHome entity IDs, names, areas, visibility, and user-disabled state
+  during startup and reload. Keep delayed transport discovery read-only.
+- Limit transport preparation to explicit commissioning and preserve user
+  customizations there too. Stop deleting ESPHome button entries.
+- Apply a shutter's initial area only when its device is first created.
+- Report unavailable bridges and rejected actions through translated Home
+  Assistant errors.
+
 ## 0.6.2
 
 - Update GitHub Actions checkout and Python setup to version 7.

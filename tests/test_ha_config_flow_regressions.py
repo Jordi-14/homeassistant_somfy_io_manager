@@ -176,3 +176,17 @@ def test_moving_a_shutter_disables_the_old_transport_cover():
 def test_move_response_accepts_source_errors_and_destination_success():
     assert '("slot", "target_slot") if suffix == "move"' in RUNTIME_SOURCE
     assert 'status.get("slot") not in requested_slots' in RUNTIME_SOURCE
+
+
+def test_action_error_messages_exist_in_every_catalogue():
+    for relative_path in (
+        "strings.json",
+        "translations/en.json",
+        "translations/ca.json",
+    ):
+        catalogue = json.loads((INTEGRATION_ROOT / relative_path).read_text())
+        messages = catalogue["exceptions"]
+        assert set(messages) == {"manager_error", "manager_unavailable", "manager_rejected"}
+        assert all(item["message"].strip() for item in messages.values())
+        assert "{detail}" in messages["manager_error"]["message"]
+        assert "{detail}" in messages["manager_rejected"]["message"]
