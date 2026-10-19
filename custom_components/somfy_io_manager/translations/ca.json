@@ -1,5 +1,16 @@
 {
   "title": "Gestor de persianes Somfy IO",
+  "exceptions": {
+    "manager_error": {
+      "message": "El pont Somfy no ha pogut completar l'acció: {detail}."
+    },
+    "manager_unavailable": {
+      "message": "El pont Somfy no està disponible. Comprova que el dispositiu ESPHome estigui connectat i torna-ho a provar."
+    },
+    "manager_rejected": {
+      "message": "El pont Somfy ha rebutjat l'acció: {detail}."
+    }
+  },
   "config": {
     "step": {
       "user": {
