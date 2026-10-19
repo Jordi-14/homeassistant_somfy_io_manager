@@ -191,11 +191,13 @@ async def test_pairing_area_is_applied_once_and_platforms_preserve_changes(
         registered = registry.async_get_or_create(
             domain, DOMAIN, entity.unique_id, config_entry=entry, device_id=device.id
         )
+        registry.async_update_entity(registered.entity_id, name=f"User {domain} name")
         registry.async_update_entity(registered.entity_id, area_id=entity_area.id)
         entity.hass = hass
         entity.entity_id = registered.entity_id
         await entity.async_added_to_hass()
         assert registry.async_get(registered.entity_id).area_id == entity_area.id
+        assert registry.async_get(registered.entity_id).name == f"User {domain} name"
         assert devices.async_get(device.id).area_id == (
             changed_area.id if user_area else None
         )
