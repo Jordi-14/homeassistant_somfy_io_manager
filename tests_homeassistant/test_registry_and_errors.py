@@ -32,7 +32,6 @@ from custom_components.somfy_io_manager.const import (
 from custom_components.somfy_io_manager.cover import SomfyManagedCover
 from custom_components.somfy_io_manager.entity import (
     initialize_shutter_device,
-    shutter_device_identifier,
 )
 from custom_components.somfy_io_manager.entity_migration import (
     configure_transport_cover,
@@ -173,11 +172,8 @@ async def test_pairing_area_is_applied_once_and_platforms_preserve_changes(
     _, entry, shutter = _entries(
         hass, area_id=pairing_area.id if initial_area else None
     )
-    initialize_shutter_device(hass, entry, shutter)
+    device = initialize_shutter_device(hass, entry, shutter)
     devices = dr.async_get(hass)
-    device = devices.async_get_device(
-        identifiers={shutter_device_identifier(entry, shutter)}
-    )
     assert device.area_id == (pairing_area.id if initial_area else None)
     devices.async_update_device(
         device.id, area_id=changed_area.id if user_area else None
@@ -209,10 +205,7 @@ async def test_pairing_area_is_applied_once_and_platforms_preserve_changes(
 
 async def test_deleted_pairing_area_does_not_prevent_device_creation(hass):
     _, entry, shutter = _entries(hass, area_id="deleted-area")
-    initialize_shutter_device(hass, entry, shutter)
-    device = dr.async_get(hass).async_get_device(
-        identifiers={shutter_device_identifier(entry, shutter)}
-    )
+    device = initialize_shutter_device(hass, entry, shutter)
     assert device is not None
     assert device.area_id is None
 

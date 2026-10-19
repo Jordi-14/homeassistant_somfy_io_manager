@@ -88,10 +88,14 @@ async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 def _remove_obsolete_bridge_device(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove the former empty manager hub; ESPHome remains the bridge device."""
     registry = dr.async_get(hass)
-    bridge = registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    devices = dr.async_entries_for_config_entry(registry, entry.entry_id)
+    bridge = next(
+        (device for device in devices if (DOMAIN, entry.entry_id) in device.identifiers),
+        None,
+    )
     if bridge is None:
         return
-    for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+    for device in devices:
         if device.id != bridge.id and device.via_device_id == bridge.id:
             registry.async_update_device(device.id, via_device_id=None)
     registry.async_remove_device(bridge.id)

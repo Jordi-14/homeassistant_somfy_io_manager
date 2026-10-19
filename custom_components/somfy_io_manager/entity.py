@@ -48,13 +48,15 @@ def initialize_shutter_device(
     hass: HomeAssistant,
     entry: ConfigEntry,
     shutter: dict,
-) -> None:
+) -> dr.DeviceEntry:
     """Apply the pairing area only when creating the shutter device."""
     registry = dr.async_get(hass)
     info = shutter_device_info(entry, shutter)
-    if registry.async_get_device(identifiers=info["identifiers"]) is not None:
-        return
+    for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+        if info["identifiers"] & device.identifiers:
+            return device
     device = registry.async_get_or_create(config_entry_id=entry.entry_id, **info)
     area_id = shutter.get(CONF_AREA_ID)
     if area_id is not None and ar.async_get(hass).async_get_area(area_id) is not None:
-        registry.async_update_device(device.id, area_id=area_id)
+        return registry.async_update_device(device.id, area_id=area_id)
+    return device

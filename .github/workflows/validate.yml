@@ -58,6 +58,7 @@ jobs:
     name: HA behavior (${{ matrix.homeassistant }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - homeassistant: "2026.7.0"
