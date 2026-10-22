@@ -14,6 +14,11 @@
   unhandled task exceptions.
 - Replace the deprecated global device-identifier lookup with a config-entry-
   scoped lookup compatible with future Home Assistant releases.
+- Preserve user-selected ESPHome transport IDs, names, areas, visibility and
+  disabled state during startup; apply a shutter's configured area only when
+  its virtual device is first created.
+- Reconcile the stable multi-bridge source with the public default branch so
+  the repository, release tag and HACS package describe the same implementation.
 
 ## 0.8.0
 
@@ -154,6 +159,19 @@
 - Synchronize tilt estimates from the physical variation wheel and from
   open, close, stop, and MY behavior.
 - Preserve roller-shutter behavior and the existing manager API version.
+## 0.6.3
+
+- Preserve ESPHome entity IDs, names, areas, visibility, and user-disabled state
+  during startup and reload. Keep delayed transport discovery read-only.
+- Limit transport preparation to explicit commissioning and preserve user
+  customizations there too. Stop deleting ESPHome button entries.
+- Apply a shutter's initial area only when its device is first created.
+- Report unavailable bridges and rejected actions through translated Home
+  Assistant errors.
+
+## 0.6.2
+
+ - Update GitHub Actions checkout and Python setup to version 7.
 
 ## 0.6.1
 

@@ -7,11 +7,12 @@ from uuid import uuid4
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 
-from .const import CONF_NAME, CONF_SHUTTER_ID, DOMAIN
+from .const import CONF_AREA_ID, CONF_NAME, CONF_SHUTTER_ID, DOMAIN
 
 
 def ensure_shutter_id(shutter: dict) -> str:
@@ -44,23 +45,22 @@ def shutter_device_info(entry: ConfigEntry, shutter: dict) -> DeviceInfo:
     )
 
 
-def configure_shutter_entity(
+def initialize_shutter_device(
     hass: HomeAssistant,
-    *,
-    entity_id: str,
-    area_id: str | None,
-) -> None:
-    """Assign a shutter device, or a standalone entity, to the configured area."""
-    registry = er.async_get(hass)
-    entry = registry.async_get(entity_id)
-    if entry is None:
-        return
-
-    if entry.device_id is not None:
-        dr.async_get(hass).async_update_device(entry.device_id, area_id=area_id)
-        return
-
-    registry.async_update_entity(entity_id, area_id=area_id)
+    entry: ConfigEntry,
+    shutter: dict,
+) -> dr.DeviceEntry:
+    """Apply the pairing area only when creating the shutter device."""
+    registry = dr.async_get(hass)
+    info = shutter_device_info(entry, shutter)
+    for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+        if info["identifiers"] & device.identifiers:
+            return device
+    device = registry.async_get_or_create(config_entry_id=entry.entry_id, **info)
+    area_id = shutter.get(CONF_AREA_ID)
+    if area_id is not None and ar.async_get(hass).async_get_area(area_id) is not None:
+        return registry.async_update_device(device.id, area_id=area_id)
+    return device
 
 
 def remove_shutter_registry_rows(

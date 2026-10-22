@@ -1657,7 +1657,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
         )
 
     def _prepare_transport_entity(self) -> None:
-        """Hide the ESPHome cover used as the user-facing cover's transport."""
+        """Prepare integration-owned transport state during explicit setup."""
         registry = er.async_get(self.hass)
         configure_transport_cover(
             registry,

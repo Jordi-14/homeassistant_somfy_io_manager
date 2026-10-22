@@ -1,4 +1,4 @@
-"""User-facing Somfy shutter covers backed by hidden ESPHome transports."""
+"""User-facing Somfy shutter covers backed by ESPHome transports."""
 
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import (
-    CONF_AREA_ID,
     CONF_COVER_TYPE,
     CONF_SHUTTERS,
     CONF_SLOT,
@@ -30,7 +29,6 @@ from .const import (
     STATE_ACTIVE,
 )
 from .entity import (
-    configure_shutter_entity,
     ensure_shutter_id,
     shutter_device_info,
     shutter_object_id,
@@ -66,7 +64,7 @@ async def async_setup_entry(
 
 
 class SomfyManagedCover(CoverEntity):
-    """Expose a hidden ESPHome slot cover as a Somfy shutter entity."""
+    """Expose an ESPHome slot cover as a Somfy shutter entity."""
 
     _attr_has_entity_name = True
     _attr_name = None
@@ -104,7 +102,6 @@ class SomfyManagedCover(CoverEntity):
         self._attr_supported_features = self._BASE_FEATURES
         if self._is_venetian:
             self._attr_supported_features |= self._TILT_FEATURES
-        self._area_id = shutter.get(CONF_AREA_ID)
         self._transport_entity_id = transport_entity_id
         self._remove_transport_listener = None
         self._attr_unique_id = f"{entry.entry_id}-{shutter_id}-cover"
@@ -114,13 +111,8 @@ class SomfyManagedCover(CoverEntity):
         self._attr_is_closed = None
 
     async def async_added_to_hass(self) -> None:
-        """Start mirroring the hidden ESPHome transport cover."""
+        """Start mirroring the ESPHome transport cover."""
         await super().async_added_to_hass()
-        configure_shutter_entity(
-            self.hass,
-            entity_id=self.entity_id,
-            area_id=self._area_id,
-        )
         self.async_on_remove(
             async_track_state_change_event(
                 self.hass, self._runtime.status_entity_id, self._bridge_changed

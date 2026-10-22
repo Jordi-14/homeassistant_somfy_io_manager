@@ -9,7 +9,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import (
-    CONF_AREA_ID,
     CONF_SHUTTERS,
     CONF_SLOT,
     CONF_STATE,
@@ -18,7 +17,6 @@ from .const import (
     STATE_ACTIVE,
 )
 from .entity import (
-    configure_shutter_entity,
     ensure_shutter_id,
     shutter_device_info,
     shutter_object_id,
@@ -72,7 +70,6 @@ class SomfyRemoteSensor(SensorEntity):
         self._runtime = runtime
         self._slot = int(shutter[CONF_SLOT])
         self._shutter_id = ensure_shutter_id(shutter)
-        self._area_id = shutter.get(CONF_AREA_ID)
         self._attr_name = "Detected remote"
         cover_object_id = shutter_object_id(shutter)
         self._attr_unique_id = f"{entry.entry_id}-{self._shutter_id}-remote"
@@ -92,12 +89,6 @@ class SomfyRemoteSensor(SensorEntity):
             self._runtime.coordinator.subscribe(
                 self._shutter_id, self._observation_received
             )
-        )
-
-        configure_shutter_entity(
-            self.hass,
-            entity_id=self.entity_id,
-            area_id=self._area_id,
         )
 
     @callback

@@ -193,21 +193,20 @@ def test_shutter_controls_are_grouped_as_somfy_entities():
 
 
 def test_device_backed_entities_inherit_area_from_their_device():
-    """HA 2026.10 rejects own areas on unnamed device-backed entities."""
+    """HA 2026.10 areas belong to the shutter device, not unnamed entities."""
     source = (
         Path(__file__).parent.parent
         / "custom_components"
         / "somfy_io_manager"
         / "entity.py"
     ).read_text()
-    function = source.split("def configure_shutter_entity", 1)[1]
+    function = source.split("def initialize_shutter_device", 1)[1]
     function = function.split("def remove_shutter_registry_rows", 1)[0]
 
-    device_branch = function.split("if entry.device_id is not None:", 1)[1]
-    assert "async_update_device(entry.device_id, area_id=area_id)" in device_branch
-    assert "return" in device_branch.split(
-        "registry.async_update_entity(entity_id, area_id=area_id)", 1
-    )[0]
+    assert "registry.async_get_or_create" in function
+    assert "registry.async_update_device(device.id, area_id=area_id)" in function
+    assert "entity_registry" not in function
+    assert "async_update_entity" not in function
 
 
 def test_unknown_transport_position_remains_available():
@@ -381,7 +380,7 @@ def test_esphome_connection_failures_use_manager_error_hierarchy():
 def test_obsolete_bridge_lookup_is_scoped_to_its_config_entry():
     init_source = (INTEGRATION_ROOT / "__init__.py").read_text()
     function = init_source.split("def _remove_obsolete_bridge_device", 1)[1]
-    function = function.split("def _reconcile_transports", 1)[0]
+    function = function.split("def _wait_for_transport_covers", 1)[0]
     assert "dr.async_entries_for_config_entry(registry, entry.entry_id)" in function
     assert "registry.async_get_device" not in function
 
@@ -494,3 +493,17 @@ def test_multibridge_my_waits_for_firmware_completion_under_global_lock():
         '"command_complete" if complete_ack else "command_sent"' in COORDINATOR_SOURCE
     )
     assert "MY_RADIO_GUARD_SECONDS" in COORDINATOR_SOURCE
+
+
+def test_action_error_messages_exist_in_every_catalogue():
+    for relative_path in (
+        "strings.json",
+        "translations/en.json",
+        "translations/ca.json",
+    ):
+        catalogue = json.loads((INTEGRATION_ROOT / relative_path).read_text())
+        messages = catalogue["exceptions"]
+        assert set(messages) == {"manager_error", "manager_unavailable", "manager_rejected"}
+        assert all(item["message"].strip() for item in messages.values())
+        assert "{detail}" in messages["manager_error"]["message"]
+        assert "{detail}" in messages["manager_rejected"]["message"]
