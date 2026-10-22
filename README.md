@@ -20,16 +20,23 @@ registered trademark of its respective owner.
 
 ## Status and compatibility
 
-The io-homecontrol **1W path is hardware validated**. Tests cover pairing,
+The io-homecontrol **1W roller-shutter path is hardware validated**. Tests cover pairing,
 independent open/close/stop/MY control, intermediate positioning, repeated
 physical-remote events, slot management, encrypted recovery, and persistence
 after reboot.
+
+The Venetian-blind path has also been hardware validated with a Situo 5
+Variation A/M io Pure II. It uses the same 1W pairing and controller identity
+as an ordinary shutter, with native step-based slat tilt added on top.
 
 The bidirectional 2W path is not currently supported by this manager.
 
 | Integration | Manager API | Home Assistant | ESPHome | Status |
 | --- | ---: | ---: | ---: | --- |
-| 0.6.x | 1 | 2026.7+ | 2026.7.4 tested | 1W hardware validated |
+| 0.6.x | 1 | 2026.7+ | 2026.7.4 tested | 1W roller shutters hardware validated |
+| 0.7.0b6 | 1 | 2026.7+ | 2026.7.4 tested | 1W roller and Venetian shutters hardware validated |
+| 0.8.0b1 | 1 + additive multi-bridge API | 2026.8+ | 2026.8.2 compiled | Experimental two-bridge validation build |
+| 0.8.0b2 | 1 + additive multi-bridge API | 2026.8+ | 2026.8.2 tested | Multi-bridge ownership-flow recovery fix |
 
 Validated bridge hardware:
 
@@ -46,10 +53,17 @@ installation.
 
 - One Home Assistant device per physical shutter.
 - Native cover controls for open, close, stop, and estimated percentage.
+- Native Venetian tilt controls with calibrated detents, direction inversion,
+  and endpoint resynchronization.
 - Dedicated MY/favourite-position button.
+- Atomic bridge-local queuing for simultaneous MY requests.
 - Friendly physical-remote event sensor showing Open, Close, Stop/MY, or MY.
 - Physical-remote synchronization of the estimated cover state.
+- GUI-managed physical group remotes with any number of shutters per group.
+- Multiple overlapping physical groups per shutter without additional pairing.
 - Independent opening time, closing time, and MY calibration per shutter.
+- Per-Venetian-blind tilt step count, wheel-direction calibration, and saved MY
+  slat step.
 - Twenty persistent firmware slots per bridge.
 - Explicit slot selection when adding or importing a shutter.
 - Safe moves to empty slots and direct swaps between occupied slots.
@@ -60,6 +74,9 @@ installation.
 - English and Catalan config flows.
 - Privacy-preserving downloadable diagnostics.
 - Support for multiple bridges when radio range requires them.
+- Optional exact-frame secondary transmission for OPEN, CLOSE, and STOP.
+- Installation-wide receiver diversity with deduplicated physical-remote events.
+- Guarded, resumable controller-ownership moves between bridges.
 
 ## Architecture
 
@@ -67,7 +84,7 @@ The project is deliberately split into two repositories:
 
 | Layer | Repository | Responsibility |
 | --- | --- | --- |
-| ESPHome | [`Jordi-14/esphome_somfy`](https://github.com/Jordi-14/esphome_somfy/tree/iohc-hardware-control) | Radio framing, receive/transmit, rolling codes, NVS identities, slot state, position timing, encrypted export, and manager API. |
+| ESPHome | [`Jordi-14/esphome_somfy`](https://github.com/Jordi-14/esphome_somfy/tree/iohc-venetian-tilt-discovery) | Radio framing, receive/transmit, rolling codes, NVS identities, slot state, position timing, encrypted export, and manager API. |
 | Home Assistant | This repository | Config and options flows, per-shutter devices and entities, diagnostics, encrypted-snapshot retention, and safe slot workflows. |
 
 The firmware work is proposed upstream in
@@ -127,7 +144,7 @@ api:
   custom_services: true
 
 external_components:
-  - source: github://Jordi-14/esphome_somfy@iohc-hardware-control
+  - source: github://Jordi-14/esphome_somfy@e0b0e48c72605068033854643151c6ec2813d2b2
     components: [somfy, somfy_iohc_manager]
 
 text_sensor:
@@ -153,6 +170,11 @@ Generate a unique 16-byte backup key and store it as exactly 32 hexadecimal
 characters. Do not reuse a controller AES key, publish the backup key, or place
 it directly in a public YAML file.
 
+Give every bridge a unique ESPHome node name and unique API/OTA credentials.
+Bridges that exchange controller ownership or exact-frame relay envelopes must
+use the same `somfy_io_backup_key`; the firmware uses it as the default relay
+key without exposing it to Home Assistant.
+
 Flash the firmware, add its ESPHome device to Home Assistant, and confirm the
 commissioning status entity reports manager API version 1 before adding this
 integration.
@@ -174,14 +196,19 @@ Each active shutter becomes one Somfy device containing:
 
 | Entity | Purpose |
 | --- | --- |
-| Cover | Open, close, stop, current estimated position, and set position. |
+| Cover | Open, close, stop, and estimated position. Venetian devices also expose native slat tilt. |
 | MY position button | Recall the motor's native favourite position. |
 | Detected remote sensor | Record every decoded physical-remote press with sanitized diagnostic attributes. |
 
 The fixed slot covers generated by ESPHome provide timing and radio state for
 the Somfy entities. Their names, IDs, areas and visibility remain under your
-control; you can hide them from dashboards through Home Assistant. Restarting
-or reloading the manager preserves your choices.
+control; restarting or reloading the manager preserves your choices. They are
+not intended for dashboards and can be hidden through Home Assistant.
+
+An online transport with an unknown post-boot position remains controllable;
+only a missing or disconnected transport makes the managed cover unavailable.
+Managed covers also rebind automatically if their ESPHome transport appears
+after the Somfy platform during startup or hardware replacement.
 
 The area selected when pairing is applied only when the shutter device is
 created. Later area changes on the device or entity page are preserved.
@@ -193,7 +220,37 @@ Open **Configure → Pair a new shutter**, select a firmware slot, and enter:
 - shutter name and optional Home Assistant area;
 - full opening time;
 - full closing time;
-- approximate MY percentage.
+- approximate MY percentage;
+- cover type; for a Venetian blind, the wheel detents that actually move the
+  slats between its two endpoints and whether the counterclockwise endpoint is
+  fully open (100% in Home Assistant);
+- for a Venetian blind, the saved MY slat step counted clockwise from the
+  counterclockwise endpoint. Do not count an extra click used only to verify an
+  endpoint.
+
+For Venetian blinds, a 0% or 100% tilt request always performs one complete
+calibrated sweep plus a small endpoint margin. This establishes a known
+endpoint even after initial pairing or if the restored estimate no longer
+matches the physical slats. Intermediate percentages send only the exact
+number of required detents, are rounded to the nearest reachable position, and
+finish by reporting that reachable position rather than the original request.
+The matching firmware combines movement into hardware-verified two-step wheel
+gestures where possible and uses one original single-step gesture for an odd
+remainder. Larger synthetic rolls were deliberately avoided because testing
+found their motor response non-linear and an oversized roll could be rejected.
+
+Tilt follows Home Assistant's cover convention: 100% is fully open and 0% is
+fully closed. On the tested blind the counterclockwise endpoint is open and the
+clockwise endpoint is closed, so the corresponding calibration option is
+enabled. Native open-tilt and close-tilt actions use those same endpoints.
+
+Lift movement also changes the physical slats. OPEN immediately puts them in
+the fully open attitude and CLOSE in the clockwise closed attitude; STOP leaves
+that new attitude in place. A tilt request during lift movement stops the lift,
+applies the tilt, and never resumes the interrupted height movement. Native MY
+temporarily uses the appropriate travel attitude and restores the motor's saved
+MY tilt after the height movement finishes; the configured MY slat step keeps
+Home Assistant's estimate synchronized without extra wheel transmissions.
 
 The wizard then asks you to:
 
@@ -223,6 +280,43 @@ Slot numbers are organizational and can be changed later:
 Moves and swaps commit through firmware NVS safeguards and send no PROG or
 pairing transmissions.
 
+## Physical group remotes
+
+Some multi-channel remotes use a separate controller identity for a group or
+**All channels** selection. The tested Situo 5 sends one broadcast command from
+that group identity; it does not send one individual command for every motor.
+
+Use **Configure → Add a physical group remote** to synchronize Home Assistant
+with one of these selections:
+
+1. select every managed shutter affected by that physical group;
+2. put the physical remote in the intended group or All-channels mode;
+3. briefly press OPEN or CLOSE during the 120-second capture window;
+4. confirm the captured press.
+
+The shutter selector has no two-shutter or one-bridge limit. One physical group
+may contain any number of shutters across the installation, and one shutter may
+belong to multiple overlapping groups. **Edit a group remote** replaces its complete
+membership; **Remove a group remote** removes only the passive synchronization
+mapping.
+
+One physical group action is delivered with its complete shutter membership,
+so every assigned cover estimate and detected-remote sensor updates even when
+the ESPHome API coalesces rapid state publications. On Venetian shutters, the
+native stop-then-tilt frame pair is exposed as one tilt action rather than a
+separate STOP/MY followed by tilt. The detected-remote sensor also reports an
+estimated effective step count for larger wheel rolls instead of representing
+every roll as a single step.
+
+This operation is receive-only. It sends no radio frame, does not use PROG, and
+does not consume a motor pairing slot. The bridge continues to control each
+shutter independently with its own paired identity; the group mapping only
+applies one received physical command to every assigned Home Assistant state
+estimate. Membership follows shutters through slot moves, swaps, and
+bridge-ownership moves. Home Assistant projects each global group onto the
+appropriate local slots and restores it if bridge firmware or hardware is
+replaced.
+
 ## Position and MY behaviour
 
 One-way motors do not return authoritative position. Position is estimated
@@ -234,10 +328,42 @@ from calibrated travel time and corrected at full end stops:
   estimated target;
 - pressing Stop sends only the stopping frame;
 - pressing MY sends the complete native MY sequence, so an idle shutter moves
-  to its favourite position and a moving shutter first stops cleanly.
+  to its favourite position and a moving shutter first stops cleanly;
+- simultaneous MY requests on one bridge are queued as complete gestures. The
+  next shutter starts immediately after the previous authenticated release and
+  a short radio handoff gap, so automations do not need manual delays.
 
 If position gradually drifts, run the shutter fully to an end stop and verify
 the configured opening and closing times.
+
+## Multiple bridges
+
+Add every ESPHome radio as its own Somfy IO Shutter Manager config entry. The
+integration then coordinates them as one installation:
+
+- every bridge listens for physical remotes;
+- duplicate copies of the same rolling-sequence gesture are delivered once;
+- if the owner missed a received command, it gets an estimator-only update that
+  cannot transmit RF;
+- each shutter may have an optional secondary bridge for exact-frame OPEN,
+  CLOSE, and STOP redundancy;
+- controller ownership can be moved to an empty slot on another bridge without
+  pairing a new identity.
+
+Configure a relay under **Assign a secondary transmitting bridge** in the
+shutter's owning entry. MY, intermediate position, tilt, pairing, and PROG are
+always primary-only. If the secondary is unavailable, the primary continues
+normally.
+
+Use **Move a shutter to another bridge** to change the primary. The guarded
+transaction disables and archives the source, imports the identity disabled,
+activates the destination, and finally erases the archived source. If it is
+interrupted, reopen Configure and use **Resume an interrupted bridge transfer**;
+do not pair another controller. Entity IDs may be recreated after a primary
+move, so review automations afterward.
+
+See the [multi-bridge design and validation guide](docs/future-multi-bridge.md)
+for the exact safety model and two-radio test checklist.
 
 ## Recovery and ownership
 
@@ -250,8 +376,11 @@ power two bridges using the same restored controller identity: a rolling-code
 stream must have exactly one active owner.
 
 If commissioning is interrupted after a radio transmission, the options flow
-offers a safe resume or discard path. Follow that path instead of manually
-repeating pairing frames.
+preserves that controller identity. If the second jog did not occur and the
+preserved slot does not control the shutter, choose the protected same-identity
+retry, obtain a fresh first PROG jog with the original remote and let the wizard
+retransmit exactly once. Do not create another controller or manually repeat
+pairing frames.
 
 ## Troubleshooting
 
@@ -279,6 +408,15 @@ repeating pairing frames.
 - Remember that movement from the physical remote is observable only when its
   frames are received by the bridge.
 
+### A physical group press is not detected
+
+- Select the intended group or All-channels mode before starting capture.
+- Briefly press OPEN or CLOSE; STOP/MY and wheel actions are deliberately not
+  accepted as group-discovery evidence.
+- Do not press PROG. Adding a physical group is receive-only.
+- Keep the remote within reliable radio range of the bridge and retry within
+  the new 120-second window.
+
 ### Debug logging
 
 Enable temporary debug logging from the integration entry menu, reproduce the
@@ -305,6 +443,13 @@ anonymous slot calibration, recovery availability, and commissioning health.
 They deliberately omit shutter names, areas, internal identities, controller
 keys, recovery payloads, rolling codes, remote IDs, node IDs, and generated
 service/entity IDs. Review the file before attaching it to an issue.
+
+## Future work
+
+The remaining multi-bridge work is broader hardware validation, partial
+Venetian-evidence correlation, and moving firmware-timed intermediate STOPs into
+a fully bridge-aware transaction scheduler. The controller identity remains
+strictly single-owner; receiver diversity never becomes rolling-code failover.
 
 ## Development
 

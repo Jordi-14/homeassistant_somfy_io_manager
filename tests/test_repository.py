@@ -19,9 +19,9 @@ def test_public_versions_are_aligned() -> None:
     project = (ROOT / "pyproject.toml").read_text()
     changelog = (ROOT / "CHANGELOG.md").read_text()
 
-    assert manifest["version"] == "0.6.3"
-    assert 'version = "0.6.3"' in project
-    assert "## 0.6.3" in changelog
+    assert manifest["version"] == "0.8.1"
+    assert 'version = "0.8.1"' in project
+    assert "## 0.8.1" in changelog
 
 
 def test_diagnostics_status_allowlist_excludes_private_radio_state() -> None:
@@ -40,8 +40,20 @@ def test_diagnostics_status_allowlist_excludes_private_radio_state() -> None:
     safe_fields = set(assignments["_SAFE_STATUS_FIELDS"])
     assert safe_fields == {"v", "event", "action", "slot", "state", "rssi"}
     assert safe_fields.isdisjoint(
-        {"remote", "node", "next", "rolling_code", "key", "detail"}
+        {
+            "remote",
+            "node",
+            "next",
+            "rolling_code",
+            "key",
+            "detail",
+            "relay_token",
+            "relay_envelope",
+            "transfer_token",
+            "encrypted_backup",
+        }
     )
+    assert '"accepted_remote_commands"' in source
     assert "CONF_NAME" not in source
     assert "CONF_AREA_ID" not in source
     assert "CONF_SHUTTER_ID" not in source
@@ -72,7 +84,9 @@ def test_hacs_release_archive_contains_only_integration_files(tmp_path: Path) ->
     assert "translations/en.json" in names
     assert "translations/ca.json" in names
     assert all(not name.startswith("custom_components/") for name in names)
-    assert all("__pycache__" not in name and not name.endswith(".pyc") for name in names)
+    assert all(
+        "__pycache__" not in name and not name.endswith(".pyc") for name in names
+    )
 
 
 def test_public_documentation_covers_required_user_paths() -> None:

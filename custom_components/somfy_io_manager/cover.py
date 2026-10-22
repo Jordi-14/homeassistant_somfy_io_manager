@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from homeassistant.components.cover import (
     ATTR_POSITION,
+    ATTR_TILT_POSITION,
     CoverDeviceClass,
     CoverEntity,
     CoverEntityFeature,
@@ -17,9 +18,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import (
+    CONF_COVER_TYPE,
     CONF_SHUTTERS,
     CONF_SLOT,
     CONF_STATE,
+    COVER_TYPE_SHUTTER,
+    COVER_TYPE_VENETIAN,
     DATA_RUNTIME,
     DOMAIN,
     STATE_ACTIVE,
@@ -62,15 +66,20 @@ async def async_setup_entry(
 class SomfyManagedCover(CoverEntity):
     """Expose an ESPHome slot cover as a Somfy shutter entity."""
 
-    _attr_device_class = CoverDeviceClass.SHUTTER
     _attr_has_entity_name = True
     _attr_name = None
     _attr_should_poll = False
-    _attr_supported_features = (
+    _BASE_FEATURES = (
         CoverEntityFeature.OPEN
         | CoverEntityFeature.CLOSE
         | CoverEntityFeature.STOP
         | CoverEntityFeature.SET_POSITION
+    )
+    _TILT_FEATURES = (
+        CoverEntityFeature.OPEN_TILT
+        | CoverEntityFeature.CLOSE_TILT
+        | CoverEntityFeature.STOP_TILT
+        | CoverEntityFeature.SET_TILT_POSITION
     )
 
     def __init__(
@@ -83,8 +92,18 @@ class SomfyManagedCover(CoverEntity):
         object_id = shutter_object_id(shutter)
         shutter_id = ensure_shutter_id(shutter)
         self._runtime = runtime
-        self._slot = int(shutter[CONF_SLOT])
+        self._shutter = dict(shutter)
+        self._is_venetian = (
+            shutter.get(CONF_COVER_TYPE, COVER_TYPE_SHUTTER) == COVER_TYPE_VENETIAN
+        )
+        self._attr_device_class = (
+            CoverDeviceClass.BLIND if self._is_venetian else CoverDeviceClass.SHUTTER
+        )
+        self._attr_supported_features = self._BASE_FEATURES
+        if self._is_venetian:
+            self._attr_supported_features |= self._TILT_FEATURES
         self._transport_entity_id = transport_entity_id
+        self._remove_transport_listener = None
         self._attr_unique_id = f"{entry.entry_id}-{shutter_id}-cover"
         self._attr_suggested_object_id = object_id
         self._attr_device_info = shutter_device_info(entry, shutter)
@@ -94,16 +113,60 @@ class SomfyManagedCover(CoverEntity):
     async def async_added_to_hass(self) -> None:
         """Start mirroring the ESPHome transport cover."""
         await super().async_added_to_hass()
-        if self._transport_entity_id is None:
-            return
         self.async_on_remove(
             async_track_state_change_event(
-                self.hass, self._transport_entity_id, self._transport_changed
+                self.hass, self._runtime.status_entity_id, self._bridge_changed
             )
         )
+        self.async_on_remove(self._unbind_transport)
+        self._bind_transport()
         self._apply_transport_state(
-            self.hass.states.get(self._transport_entity_id), write=False
+            (
+                self.hass.states.get(self._transport_entity_id)
+                if self._transport_entity_id is not None
+                else None
+            ),
+            write=False,
         )
+
+    @callback
+    def _bind_transport(self) -> None:
+        """Resolve and follow the current ESPHome transport entity."""
+        transport = find_transport_cover(
+            er.async_get(self.hass),
+            self._runtime.esphome_entry_id,
+            int(self._shutter[CONF_SLOT]),
+        )
+        entity_id = transport.entity_id if transport is not None else None
+        if (
+            entity_id == self._transport_entity_id
+            and self._remove_transport_listener is not None
+        ):
+            return
+        self._unbind_transport()
+        self._transport_entity_id = entity_id
+        if entity_id is not None:
+            self._remove_transport_listener = async_track_state_change_event(
+                self.hass, entity_id, self._transport_changed
+            )
+
+    @callback
+    def _unbind_transport(self) -> None:
+        """Remove the current transport-state listener."""
+        if self._remove_transport_listener is not None:
+            self._remove_transport_listener()
+            self._remove_transport_listener = None
+
+    @callback
+    def _bridge_changed(self, _event: Event) -> None:
+        """Rebind transports that appeared after the managed cover loaded."""
+        self._bind_transport()
+        state = (
+            self.hass.states.get(self._transport_entity_id)
+            if self._transport_entity_id is not None
+            else None
+        )
+        self._apply_transport_state(state, write=True)
 
     @callback
     def _transport_changed(self, event: Event) -> None:
@@ -112,11 +175,26 @@ class SomfyManagedCover(CoverEntity):
 
     @callback
     def _apply_transport_state(self, state, *, write: bool) -> None:
-        if state is None or state.state in {STATE_UNAVAILABLE, STATE_UNKNOWN}:
-            self._attr_available = False
+        if state is None or state.state == STATE_UNAVAILABLE:
+            # Control uses the manager API rather than the raw cover service.
+            # If the bridge status transport is healthy, remain controllable
+            # while a late ESPHome entity is discovered or rebound.
+            self._attr_available = self._runtime.available
             self._attr_is_opening = False
             self._attr_is_closing = False
             self._attr_is_closed = None
+        elif state.state == STATE_UNKNOWN:
+            # An ESPHome time-based cover can be online and controllable while
+            # its position estimator has no post-boot reference. Home Assistant
+            # uses `unknown` for that state; only `unavailable` means the
+            # transport itself is offline.
+            self._attr_available = True
+            self._attr_is_opening = False
+            self._attr_is_closing = False
+            self._attr_is_closed = None
+            self._attr_current_cover_position = None
+            if self._is_venetian:
+                self._attr_current_cover_tilt_position = None
         else:
             self._attr_available = True
             self._attr_is_opening = state.state == CoverState.OPENING
@@ -127,18 +205,17 @@ class SomfyManagedCover(CoverEntity):
                 self._attr_current_cover_position = max(
                     0, min(100, round(float(position)))
                 )
+            tilt = state.attributes.get("current_tilt_position")
+            if self._is_venetian and isinstance(tilt, (int, float)):
+                self._attr_current_cover_tilt_position = max(
+                    0, min(100, round(float(tilt)))
+                )
         if write:
             self.async_write_ha_state()
 
     async def _async_control(self, command: str, position: float = 0.0) -> None:
-        await self._runtime.async_call(
-            "control",
-            {
-                "slot": self._slot,
-                "command": command,
-                "position_percent": position,
-            },
-            "command_sent",
+        await self._runtime.coordinator.async_control(
+            self._runtime, self._shutter, command, position
         )
 
     async def async_open_cover(self, **kwargs) -> None:
@@ -155,4 +232,26 @@ class SomfyManagedCover(CoverEntity):
 
     async def async_set_cover_position(self, **kwargs) -> None:
         """Move the shutter to an estimated percentage."""
-        await self._async_control("position", float(kwargs[ATTR_POSITION]))
+        position = float(kwargs[ATTR_POSITION])
+        if position <= 0:
+            await self._async_control("close")
+        elif position >= 100:
+            await self._async_control("open")
+        else:
+            await self._async_control("position", position)
+
+    async def async_open_cover_tilt(self, **kwargs) -> None:
+        """Rotate Venetian slats to the configured open endpoint."""
+        await self._async_control("tilt_position", 100.0)
+
+    async def async_close_cover_tilt(self, **kwargs) -> None:
+        """Rotate Venetian slats to the configured closed endpoint."""
+        await self._async_control("tilt_position", 0.0)
+
+    async def async_stop_cover_tilt(self, **kwargs) -> None:
+        """Cancel any remaining queued slat detents."""
+        await self._async_control("tilt_stop")
+
+    async def async_set_cover_tilt_position(self, **kwargs) -> None:
+        """Rotate Venetian slats to an estimated percentage."""
+        await self._async_control("tilt_position", float(kwargs[ATTR_TILT_POSITION]))

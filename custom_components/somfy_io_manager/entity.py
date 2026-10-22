@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 
 from .const import CONF_AREA_ID, CONF_NAME, CONF_SHUTTER_ID, DOMAIN
@@ -60,3 +61,23 @@ def initialize_shutter_device(
     if area_id is not None and ar.async_get(hass).async_get_area(area_id) is not None:
         return registry.async_update_device(device.id, area_id=area_id)
     return device
+
+
+def remove_shutter_registry_rows(
+    hass: HomeAssistant, entry: ConfigEntry, shutter: dict
+) -> None:
+    """Remove old owner rows so a transferred shutter can reclaim its names."""
+    shutter_id = ensure_shutter_id(shutter)
+    prefix = f"{entry.entry_id}-{shutter_id}-"
+    entity_registry = er.async_get(hass)
+    for entity in list(
+        er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    ):
+        if str(entity.unique_id).startswith(prefix):
+            entity_registry.async_remove(entity.entity_id)
+    device_registry = dr.async_get(hass)
+    device = device_registry.async_get_device(
+        identifiers={shutter_device_identifier(entry, shutter)}
+    )
+    if device is not None:
+        device_registry.async_remove_device(device.id)

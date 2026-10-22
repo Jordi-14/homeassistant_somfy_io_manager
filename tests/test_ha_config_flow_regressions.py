@@ -15,11 +15,23 @@ RUNTIME_SOURCE = (
     / "somfy_io_manager"
     / "runtime.py"
 ).read_text()
+COORDINATOR_SOURCE = (
+    Path(__file__).parent.parent
+    / "custom_components"
+    / "somfy_io_manager"
+    / "coordinator.py"
+).read_text()
 SENSOR_SOURCE = (
     Path(__file__).parent.parent
     / "custom_components"
     / "somfy_io_manager"
     / "sensor.py"
+).read_text()
+COVER_SOURCE = (
+    Path(__file__).parent.parent
+    / "custom_components"
+    / "somfy_io_manager"
+    / "cover.py"
 ).read_text()
 INTEGRATION_ROOT = (
     Path(__file__).parent.parent / "custom_components" / "somfy_io_manager"
@@ -66,6 +78,23 @@ def test_import_can_move_to_a_definitive_slot_without_commissioning_rf():
     assert '"pair"' not in function
 
 
+def test_uncertain_pairing_retry_reuses_the_preserved_firmware_identity():
+    resume = FLOW_SOURCE.split("async def async_step_resume_attempt", 1)[1]
+    resume = resume.split("async def async_step_retry_pairing", 1)[0]
+    retry = FLOW_SOURCE.split("async def async_step_retry_pairing", 1)[1]
+    retry = retry.split("async def async_step_edit_calibration", 1)[0]
+
+    assert "ACTION_RETRY" in resume
+    assert 'state != "pair_sent"' in resume
+    assert 'status.get("pair_retry") is not True' in resume
+    assert '"action": "retry_arm"' in retry
+    assert '"action": "pair"' in retry
+    assert "CONF_RETRY_CONTROLLER_FAILED" in retry
+    assert "CONF_PROGRAM_JOGGED" in retry
+    assert '"stage"' not in retry
+    assert '"discard"' not in retry
+
+
 def test_new_pairing_and_future_moves_choose_explicit_slots():
     add = FLOW_SOURCE.split("async def async_step_add_shutter", 1)[1]
     add = add.split("async def async_step_capture_remote", 1)[0]
@@ -102,7 +131,13 @@ def test_every_options_menu_entry_is_translated_in_all_catalogues():
         "edit_calibration",
         "move_shutter",
         "swap_shutters",
+        "add_group_remote",
+        "edit_group_remote",
+        "remove_group_remote",
         "resume_attempt",
+        "assign_secondary_bridge",
+        "move_to_bridge",
+        "resume_bridge_transfer",
     }
     for relative_path in (
         "strings.json",
@@ -112,7 +147,9 @@ def test_every_options_menu_entry_is_translated_in_all_catalogues():
         catalogue = json.loads((INTEGRATION_ROOT / relative_path).read_text())
         labels = catalogue["options"]["step"]["init"]["menu_options"]
         assert set(labels) == menu_entries
-        assert all(isinstance(labels[key], str) and labels[key].strip() for key in labels)
+        assert all(
+            isinstance(labels[key], str) and labels[key].strip() for key in labels
+        )
 
 
 def test_gui_can_swap_two_managed_shutters_without_rf():
@@ -155,14 +192,74 @@ def test_shutter_controls_are_grouped_as_somfy_entities():
     assert "via_device" not in shared_entity
 
 
+def test_device_backed_entities_inherit_area_from_their_device():
+    """HA 2026.10 areas belong to the shutter device, not unnamed entities."""
+    source = (
+        Path(__file__).parent.parent
+        / "custom_components"
+        / "somfy_io_manager"
+        / "entity.py"
+    ).read_text()
+    function = source.split("def initialize_shutter_device", 1)[1]
+    function = function.split("def remove_shutter_registry_rows", 1)[0]
+
+    assert "registry.async_get_or_create" in function
+    assert "registry.async_update_device(device.id, area_id=area_id)" in function
+    assert "entity_registry" not in function
+    assert "async_update_entity" not in function
+
+
+def test_unknown_transport_position_remains_available():
+    """Unknown position is not the same as a disconnected ESPHome cover."""
+    function = COVER_SOURCE.split("def _apply_transport_state", 1)[1]
+    function = function.split("async def _async_control", 1)[0]
+
+    assert "state is None or state.state == STATE_UNAVAILABLE" in function
+    assert "state.state == STATE_UNKNOWN" in function
+    unknown_branch = function.split("state.state == STATE_UNKNOWN", 1)[1]
+    unknown_branch = unknown_branch.split("else:", 1)[0]
+    assert "self._attr_available = True" in unknown_branch
+    assert "self._attr_current_cover_position = None" in unknown_branch
+    assert "self._attr_current_cover_tilt_position = None" in unknown_branch
+
+
+def test_managed_cover_rebinds_late_esphome_transport():
+    """A platform loaded before ESPHome entities must recover without restart."""
+    assert "self._runtime.status_entity_id, self._bridge_changed" in COVER_SOURCE
+    assert "def _bind_transport" in COVER_SOURCE
+    assert "self._runtime.esphome_entry_id" in COVER_SOURCE
+    assert "int(self._shutter[CONF_SLOT])" in COVER_SOURCE
+    missing_branch = COVER_SOURCE.split(
+        "if state is None or state.state == STATE_UNAVAILABLE", 1
+    )[1].split("elif state.state == STATE_UNKNOWN", 1)[0]
+    assert "self._attr_available = self._runtime.available" in missing_branch
+
+
+def test_my_button_uses_installation_coordinator_for_atomic_completion():
+    root = Path(__file__).parent.parent
+    button_platform = (
+        root / "custom_components" / "somfy_io_manager" / "button.py"
+    ).read_text()
+    assert "coordinator.async_control" in button_platform
+    assert 'self._runtime, self._shutter, "my"' in button_platform
+
+
 def test_detected_remote_uses_friendly_actions_and_keeps_diagnostics():
     assert '"0X0000": "Open"' in SENSOR_SOURCE
     assert '"0XC800": "Close"' in SENSOR_SOURCE
     assert '"0XD200": "Stop/MY"' in SENSOR_SOURCE
     assert '"remote_id": status.get("remote")' in SENSOR_SOURCE
     assert '"raw_command": raw_command' in SENSOR_SOURCE
-    assert '"event": status.get("event")' in SENSOR_SOURCE
+    assert '"sequence": status.get("sequence")' in SENSOR_SOURCE
+    assert '"strongest_bridge": status.get("source_bridge")' in SENSOR_SOURCE
+    assert '"heard_by_bridges": status.get("heard_by")' in SENSOR_SOURCE
     assert "_attr_force_update = True" in SENSOR_SOURCE
+
+
+def test_group_remote_status_updates_every_target_sensor():
+    assert 'target_slots = status.get("slots")' in SENSOR_SOURCE
+    assert "self._slot in target_slots" in SENSOR_SOURCE
+    assert 'status.get("slot") == self._slot' in SENSOR_SOURCE
 
 
 def test_moving_a_shutter_disables_the_old_transport_cover():
@@ -176,6 +273,226 @@ def test_moving_a_shutter_disables_the_old_transport_cover():
 def test_move_response_accepts_source_errors_and_destination_success():
     assert '("slot", "target_slot") if suffix == "move"' in RUNTIME_SOURCE
     assert 'status.get("slot") not in requested_slots' in RUNTIME_SOURCE
+
+
+def test_venetian_gui_configures_native_tilt_without_affecting_normal_shutters():
+    cover_source = (INTEGRATION_ROOT / "cover.py").read_text()
+    assert '"venetian"' in FLOW_SOURCE
+    assert '"venetian_configured"' in FLOW_SOURCE
+    assert '"tilt_steps"' in (INTEGRATION_ROOT / "const.py").read_text()
+    assert '"my_tilt_step"' in (INTEGRATION_ROOT / "const.py").read_text()
+    assert '"my_tilt_step": int(' in FLOW_SOURCE
+    assert "CoverEntityFeature.SET_TILT_POSITION" in cover_source
+    assert "CoverEntityFeature.STOP_TILT" in cover_source
+    assert "CoverEntityFeature.OPEN_TILT" in cover_source
+    assert "CoverEntityFeature.CLOSE_TILT" in cover_source
+    assert "async_set_cover_tilt_position" in cover_source
+    assert 'self._async_control("tilt_position", 100.0)' in cover_source
+    assert 'self._async_control("tilt_position", 0.0)' in cover_source
+    assert "COVER_TYPE_SHUTTER" in cover_source
+
+
+def test_venetian_default_matches_ha_open_tilt_convention():
+    assert "defaults.get(CONF_TILT_INVERTED, True)" in FLOW_SOURCE
+    assert "self._draft.get(CONF_TILT_INVERTED, True)" in FLOW_SOURCE
+
+
+def test_venetian_physical_remote_events_are_friendly():
+    assert '"0XF00D": "Tilt clockwise"' in SENSOR_SOURCE
+    assert '"0XF00E": "Tilt counterclockwise"' in SENSOR_SOURCE
+    assert 'f"{command_name} ({step_count} steps)"' in SENSOR_SOURCE
+    assert '"steps": step_count' in SENSOR_SOURCE
+
+
+def test_group_remote_aliases_support_any_number_of_shutters_without_pairing():
+    add = FLOW_SOURCE.split("async def async_step_add_group_remote", 1)[1]
+    add = add.split("async def async_step_capture_group_remote", 1)[0]
+    capture = FLOW_SOURCE.split("async def async_step_capture_group_remote", 1)[1]
+    capture = capture.split("async def async_step_edit_group_remote", 1)[0]
+
+    assert "multiple=True" in add
+    assert '"remote_alias"' in add
+    assert '"action": "discover"' in add
+    assert '"action": "set"' in capture
+    assert '"pair"' not in add
+    assert '"pair"' not in capture
+    assert "selected.update(alias[CONF_SHUTTER_IDS])" in capture
+
+
+def test_group_membership_uses_permanent_shutter_ids_and_can_be_replaced():
+    constants = (INTEGRATION_ROOT / "const.py").read_text()
+    assert 'CONF_REMOTE_ALIASES = "remote_aliases"' in constants
+    assert 'CONF_SHUTTER_IDS = "shutter_ids"' in constants
+    assert "CONF_SHUTTER_ID" in FLOW_SOURCE
+    targets = FLOW_SOURCE.split("async def async_step_group_remote_targets", 1)[1]
+    targets = targets.split("async def async_step_remove_group_remote", 1)[0]
+    assert "multiple=True" in targets
+    assert "_save_remote_alias" in targets
+    assert '"action": "set"' in targets
+
+
+def test_group_directory_is_global_across_all_bridge_entries():
+    aliases = FLOW_SOURCE.split("def _remote_aliases", 1)[1]
+    aliases = aliases.split("def _active_shutters", 1)[0]
+    assert "self._coordinator.runtimes.values()" in aliases
+    assert "merged.setdefault(remote, set()).update" in aliases
+    assert "def _save_global_remote_aliases" in aliases
+    assert "async_update_entry" in aliases
+
+
+def test_group_aliases_are_reapplied_after_bridge_replacement():
+    init_source = (INTEGRATION_ROOT / "__init__.py").read_text()
+    assert "async_sync_remote_aliases" in RUNTIME_SOURCE
+    assert '"action": "set"' in RUNTIME_SOURCE
+    assert "CONF_SHUTTER_ID" in RUNTIME_SOURCE
+    assert "coordinator.register(runtime)" in init_source
+    assert "self.request_alias_sync()" in COORDINATOR_SOURCE
+
+
+def test_group_alias_startup_sync_is_serialized_retryable_and_unload_safe():
+    init_source = (INTEGRATION_ROOT / "__init__.py").read_text()
+    worker = COORDINATOR_SOURCE.split("async def _async_alias_sync_worker", 1)[1]
+    worker = worker.split("def runtime_for", 1)[0]
+
+    assert "hass.async_create_task(\n        _async_sync_remote_aliases" not in init_source
+    assert "ALIAS_SYNC_RETRY_DELAYS" in COORDINATOR_SOURCE
+    assert "if not runtime.available" in COORDINATOR_SOURCE
+    assert "async_track_state_change_event" in COORDINATOR_SOURCE
+    assert "if new_usable and not old_usable" in COORDINATOR_SOURCE
+    assert "task.cancel()" in COORDINATOR_SOURCE
+    assert "await coordinator.async_unregister(entry.entry_id)" in init_source
+    unload = init_source.split("async def async_unload_entry", 1)[1]
+    unload = unload.split("async def _async_reload_entry", 1)[0]
+    assert unload.index("await coordinator.async_unregister") < unload.index(
+        "await data[DATA_RUNTIME].async_unload()"
+    )
+    assert "await asyncio.sleep(delay)" in worker
+
+
+def test_esphome_connection_failures_use_manager_error_hierarchy():
+    assert "from homeassistant.exceptions import HomeAssistantError" in RUNTIME_SOURCE
+    service_call = RUNTIME_SOURCE.split("await self.hass.services.async_call", 1)[1]
+    service_call = service_call.split("if status.get", 1)[0]
+    assert "except HomeAssistantError as err:" in service_call
+    assert "raise ManagerUnavailable" in service_call
+
+
+def test_obsolete_bridge_lookup_is_scoped_to_its_config_entry():
+    init_source = (INTEGRATION_ROOT / "__init__.py").read_text()
+    function = init_source.split("def _remove_obsolete_bridge_device", 1)[1]
+    function = function.split("def _wait_for_transport_covers", 1)[0]
+    assert "dr.async_entries_for_config_entry(registry, entry.entry_id)" in function
+    assert "registry.async_get_device" not in function
+
+
+def test_config_entry_v4_adds_bridge_ownership_without_changing_identity():
+    init_source = (INTEGRATION_ROOT / "__init__.py").read_text()
+    assert "VERSION = 4" in FLOW_SOURCE
+    assert "entry.version < 3" in init_source
+    assert "options.setdefault(CONF_REMOTE_ALIASES, [])" in init_source
+    assert "entry.version < 4" in init_source
+    assert "shutter[CONF_PRIMARY_ENTRY_ID] = entry.entry_id" in init_source
+
+
+def test_secondary_assignment_and_transfer_are_gui_managed():
+    constants = (INTEGRATION_ROOT / "const.py").read_text()
+    coordinator = (INTEGRATION_ROOT / "coordinator.py").read_text()
+    assert 'CONF_SECONDARY_ENTRY_ID = "secondary_entry_id"' in constants
+    assert "async_step_assign_secondary_bridge" in FLOW_SOURCE
+    assert "async_step_move_to_bridge" in FLOW_SOURCE
+    assert "async_step_resume_bridge_transfer" in FLOW_SOURCE
+    assert '"redundant_control"' in coordinator
+    assert '"relay"' in coordinator
+    assert '"transfer"' in coordinator
+
+
+def test_cross_bridge_move_removes_old_registry_rows_before_reload():
+    entity_source = (INTEGRATION_ROOT / "entity.py").read_text()
+    transfer = FLOW_SOURCE.split("async def _async_finish_bridge_transfer", 1)[1]
+    transfer = transfer.split("async def async_step_add_shutter", 1)[0]
+    assert "def remove_shutter_registry_rows" in entity_source
+    assert "entity_registry.async_remove" in entity_source
+    assert "remove_shutter_registry_rows" in transfer
+
+
+def test_cross_bridge_move_lets_options_flow_commit_its_own_entry():
+    transfer = FLOW_SOURCE.split("async def _async_finish_bridge_transfer", 1)[1]
+    transfer = transfer.split("async def async_step_add_shutter", 1)[0]
+    assert "destination.entry, options=destination_options" in transfer
+    assert "self.config_entry, options=source_options" not in transfer
+    assert 'return self.async_create_entry(title="", data=source_options)' in transfer
+    assert "async_set_pending_transfer(None)" not in transfer
+
+
+def test_active_transfer_journal_clears_only_after_metadata_converges():
+    coordinator = (INTEGRATION_ROOT / "coordinator.py").read_text()
+    reconcile = coordinator.split("async def async_reconcile_runtime_transfer", 1)[1]
+    reconcile = reconcile.split("async def _async_reconcile_transfer", 1)[0]
+    assert 'reconciled.get("phase") == "active"' in reconcile
+    assert "transfer_metadata_committed(" in reconcile
+    assert "await source.async_set_pending_transfer(None)" in reconcile
+
+
+def test_legacy_missing_remote_is_privately_hydrated_from_owner_slot():
+    init_source = (INTEGRATION_ROOT / "__init__.py").read_text()
+    hydrate = init_source.split("async def _async_hydrate_remote_metadata", 1)[1]
+    hydrate = hydrate.split("def _valid_remote", 1)[0]
+    assert '{"action": "query", "slot": int(shutter[CONF_SLOT])}' in hydrate
+    assert "shutter[CONF_REMOTE]" in hydrate
+    assert "_LOGGER" in hydrate
+    assert "remote," not in hydrate
+
+
+def test_exact_frame_relay_uses_one_shot_token_and_never_relays_my_or_tilt():
+    assert '{"action": "arm", "payload": ""}' in COORDINATOR_SOURCE
+    assert '"relay_token": token' in COORDINATOR_SOURCE
+    assert '{"action": "send", "payload": envelope}' in COORDINATOR_SOURCE
+    assert '{"action": "cancel", "payload": token}' in COORDINATOR_SOURCE
+    assert "relay_allowed(command)" in COORDINATOR_SOURCE
+
+
+def test_transfer_contract_and_order_preserve_single_owner():
+    resume = COORDINATOR_SOURCE.split("async def async_resume_transfer", 1)[1]
+    resume = resume.split("async def async_rollback_transfer", 1)[0]
+    assert '"transfer_token": token' in resume
+    assert resume.index('"action": "import"') < resume.index('"action": "activate"')
+    assert resume.index('"action": "activate"') < resume.index('"action": "commit"')
+    assert resume.index('"action": "commit"') < resume.index('"action": "finalize"')
+    assert "_async_reconcile_transfer" in resume
+    start = COORDINATOR_SOURCE.split("async def _async_start_transfer", 1)[1]
+    start = start.split("async def async_resume_transfer", 1)[0]
+    assert start.index("async_set_pending_transfer") < start.index(
+        '"action": "prepare"'
+    )
+
+
+def test_transfer_recovery_queries_firmware_instead_of_guessing_lost_response():
+    reconcile = COORDINATOR_SOURCE.split("async def _async_reconcile_transfer", 1)[1]
+    reconcile = reconcile.split("async def _async_query_transfer", 1)[0]
+    query = COORDINATOR_SOURCE.split("async def _async_query_transfer", 1)[1]
+    query = query.split("async def _ensure_destination_empty", 1)[0]
+    assert 'destination_phase == "active"' in reconcile
+    assert 'destination_phase == "archived"' in reconcile
+    assert 'source_phase == "archived"' in reconcile
+    assert '"action": "query"' in query
+    assert '"transfer_token": ""' in query
+
+
+def test_receive_diversity_handles_late_copies_prefixes_and_slot_masks():
+    assert "OBSERVATION_COLLECTION_SECONDS = 0.25" in COORDINATOR_SOURCE
+    assert "_completed_observations" in COORDINATOR_SOURCE
+    assert "terminal_supersedes_prefix" in COORDINATOR_SOURCE
+    assert 'status.get("complete") is not False' in COORDINATOR_SOURCE
+    assert "owner.entry.entry_id in pending.complete_sources" in COORDINATOR_SOURCE
+    assert "observation_slots(status)" in COORDINATOR_SOURCE
+
+
+def test_multibridge_my_waits_for_firmware_completion_under_global_lock():
+    assert "self._rf_lock = asyncio.Lock()" in COORDINATOR_SOURCE
+    assert (
+        '"command_complete" if complete_ack else "command_sent"' in COORDINATOR_SOURCE
+    )
+    assert "MY_RADIO_GUARD_SECONDS" in COORDINATOR_SOURCE
 
 
 def test_action_error_messages_exist_in_every_catalogue():

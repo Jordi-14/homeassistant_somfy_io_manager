@@ -9,7 +9,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CONF_SHUTTERS,
-    CONF_SLOT,
     CONF_STATE,
     DATA_RUNTIME,
     DOMAIN,
@@ -54,15 +53,13 @@ class SomfyMyButton(ButtonEntity):
         object_id = shutter_object_id(shutter)
         shutter_id = ensure_shutter_id(shutter)
         self._runtime = runtime
-        self._slot = int(shutter[CONF_SLOT])
+        self._shutter = dict(shutter)
         self._attr_unique_id = f"{entry.entry_id}-{shutter_id}-my"
         self._attr_suggested_object_id = f"{object_id}_my_position"
         self._attr_device_info = shutter_device_info(entry, shutter)
 
     async def async_press(self) -> None:
         """Send the deterministic native-MY sequence through the bridge."""
-        await self._runtime.async_call(
-            "control",
-            {"slot": self._slot, "command": "my", "position_percent": 0.0},
-            "command_sent",
+        await self._runtime.coordinator.async_control(
+            self._runtime, self._shutter, "my"
         )

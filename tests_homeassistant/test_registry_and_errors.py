@@ -29,6 +29,9 @@ from custom_components.somfy_io_manager.const import (
     DOMAIN,
     STATE_ACTIVE,
 )
+from custom_components.somfy_io_manager.coordinator import (
+    SomfyIOMultiBridgeCoordinator,
+)
 from custom_components.somfy_io_manager.cover import SomfyManagedCover
 from custom_components.somfy_io_manager.entity import (
     initialize_shutter_device,
@@ -96,6 +99,14 @@ def _settings(entry):
     )
 
 
+def _runtime(hass, entry):
+    """Build a runtime registered for installation-wide entity control."""
+    coordinator = SomfyIOMultiBridgeCoordinator(hass)
+    runtime = SomfyIOManagerRuntime(hass, entry, coordinator)
+    coordinator.runtimes[entry.entry_id] = runtime
+    return runtime
+
+
 async def test_startup_and_reload_preserve_esphome_entities(hass, monkeypatch):
     esphome, entry, _ = _entries(hass)
     registry = er.async_get(hass)
@@ -122,10 +133,30 @@ async def test_startup_and_reload_preserve_esphome_entities(hass, monkeypatch):
     )
     before = {item.id: _settings(item) for item in (active, inactive, button)}
     runtime = SimpleNamespace(
+        hass=hass,
+        entry=entry,
         esphome_entry_id=esphome.entry_id,
+        status_entity_id="sensor.bridge_somfy_status",
+        device_name="bridge",
         async_setup=AsyncMock(),
+        async_call=AsyncMock(return_value={"remote": "0x123456"}),
     )
+
+    class FakeCoordinator:
+        def __init__(self, _hass):
+            self.runtimes = {}
+
+        def register(self, registered):
+            self.runtimes[registered.entry.entry_id] = registered
+
+        async def async_unregister(self, entry_id):
+            self.runtimes.pop(entry_id, None)
+
+        async def async_reconcile_runtime_transfer(self, _runtime):
+            return None
+
     monkeypatch.setattr(integration, "SomfyIOManagerRuntime", lambda *_: runtime)
+    monkeypatch.setattr(integration, "SomfyIOMultiBridgeCoordinator", FakeCoordinator)
     monkeypatch.setattr(hass.config_entries, "async_forward_entry_setups", AsyncMock())
 
     for _ in range(2):
@@ -180,7 +211,7 @@ async def test_pairing_area_is_applied_once_and_platforms_preserve_changes(
     )
     initialize_shutter_device(hass, entry, shutter)
 
-    runtime = SomfyIOManagerRuntime(hass, entry)
+    runtime = _runtime(hass, entry)
     entities = (
         SomfyManagedCover(runtime, entry, shutter, None),
         SomfyMyButton(runtime, entry, shutter),
@@ -289,7 +320,7 @@ async def test_entity_actions_raise_a_translated_homeassistant_error(
     hass, entity_type, method, arguments
 ):
     _, entry, shutter = _entries(hass)
-    runtime = SomfyIOManagerRuntime(hass, entry)
+    runtime = _runtime(hass, entry)
     entity = (
         entity_type(runtime, entry, shutter, None)
         if entity_type is SomfyManagedCover
@@ -304,7 +335,7 @@ async def test_entity_actions_raise_a_translated_homeassistant_error(
 
 async def test_timeout_is_readable_and_does_not_repeat_the_command(hass):
     _, entry, _ = _entries(hass)
-    runtime = SomfyIOManagerRuntime(hass, entry)
+    runtime = _runtime(hass, entry)
     calls = []
 
     async def handler(call):
@@ -319,7 +350,7 @@ async def test_timeout_is_readable_and_does_not_repeat_the_command(hass):
 
 async def test_rejected_command_keeps_its_detail_and_translation(hass):
     _, entry, _ = _entries(hass)
-    runtime = SomfyIOManagerRuntime(hass, entry)
+    runtime = _runtime(hass, entry)
 
     async def handler(_call):
         hass.states.async_set(
@@ -341,3 +372,50 @@ async def test_rejected_command_keeps_its_detail_and_translation(hass):
     assert caught.value.detail == "not_calibrated"
     assert caught.value.translation_key == "manager_rejected"
     assert caught.value.translation_placeholders == {"detail": "not_calibrated"}
+
+
+async def test_esphome_authentication_race_is_manager_unavailable(hass):
+    """A registered action may still reject calls before API authentication."""
+    _, entry, _ = _entries(hass)
+    runtime = _runtime(hass, entry)
+
+    async def handler(_call):
+        raise HomeAssistantError("ESPHome connection is not authenticated")
+
+    hass.services.async_register(
+        "esphome", runtime.service_name("remote_alias"), handler
+    )
+    with pytest.raises(ManagerUnavailable) as caught:
+        await runtime.async_call(
+            "remote_alias",
+            {"action": "set", "remote": "0x123456", "slots": "0"},
+            "alias_saved",
+        )
+    assert caught.value.translation_key == "manager_unavailable"
+
+
+async def test_alias_retry_targets_only_the_pending_bridge(hass):
+    """Do not rewrite healthy bridges while waiting for another bridge."""
+    coordinator = SomfyIOMultiBridgeCoordinator(hass)
+    online = SimpleNamespace(
+        entry=SimpleNamespace(entry_id="online", options={CONF_SHUTTERS: []}),
+        available=True,
+        device_name="online bridge",
+        async_sync_remote_alias_map=AsyncMock(),
+    )
+    offline = SimpleNamespace(
+        entry=SimpleNamespace(entry_id="offline", options={CONF_SHUTTERS: []}),
+        available=False,
+        device_name="offline bridge",
+        async_sync_remote_alias_map=AsyncMock(),
+    )
+    coordinator.runtimes = {"online": online, "offline": offline}
+
+    assert await coordinator.async_sync_remote_aliases() == {"offline"}
+    online.async_sync_remote_alias_map.assert_awaited_once_with({})
+    offline.async_sync_remote_alias_map.assert_not_awaited()
+
+    offline.available = True
+    assert await coordinator.async_sync_remote_aliases({"offline"}) == set()
+    online.async_sync_remote_alias_map.assert_awaited_once()
+    offline.async_sync_remote_alias_map.assert_awaited_once_with({})
