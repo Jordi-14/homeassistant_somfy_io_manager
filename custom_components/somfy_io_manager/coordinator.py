@@ -10,7 +10,8 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any
 
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.helpers.event import async_track_state_change_event
 
 from .const import (
     CONF_PRIMARY_ENTRY_ID,
@@ -37,13 +38,14 @@ from .multibridge_logic import (
     terminal_supersedes_prefix,
     transfer_metadata_committed,
 )
-from .runtime import ManagerError, ManagerRejected, ManagerUnavailable
+from .runtime import ManagerError, ManagerRejected, ManagerUnavailable, parse_status
 
 _LOGGER = logging.getLogger(__name__)
 
 OBSERVATION_COLLECTION_SECONDS = 0.25
 MY_RADIO_GUARD_SECONDS = 1.35
 TRANSFER_STOP_SETTLE_SECONDS = 0.25
+ALIAS_SYNC_RETRY_DELAYS = (1.0, 2.0, 5.0, 10.0, 30.0)
 
 
 @dataclass(slots=True)
@@ -87,16 +89,99 @@ class SomfyIOMultiBridgeCoordinator:
         self._relay_failures = 0
         self._last_strongest_entry_id: str | None = None
         self._last_strongest_rssi: float | None = None
+        self._alias_sync_task: asyncio.Task[None] | None = None
+        self._alias_sync_requested = False
+        self._alias_status_unsubscribers: dict[str, Callable[[], None]] = {}
 
     @callback
     def register(self, runtime: Any) -> None:
         """Register one loaded bridge runtime."""
-        self.runtimes[runtime.entry.entry_id] = runtime
+        entry_id = runtime.entry.entry_id
+        self.runtimes[entry_id] = runtime
+        if entry_id not in self._alias_status_unsubscribers:
+            self._alias_status_unsubscribers[entry_id] = (
+                async_track_state_change_event(
+                    self.hass,
+                    runtime.status_entity_id,
+                    self._alias_bridge_status_changed,
+                )
+            )
+        self.request_alias_sync()
+
+    async def async_unregister(self, entry_id: str) -> None:
+        """Remove a runtime and cancel work that may still reference it."""
+        self.runtimes.pop(entry_id, None)
+        if (remove := self._alias_status_unsubscribers.pop(entry_id, None)) is not None:
+            remove()
+        task = self._alias_sync_task
+        if task is not None and task is not asyncio.current_task():
+            self._alias_sync_requested = False
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        self._alias_sync_task = None
+        self._alias_sync_requested = False
+        if self.runtimes:
+            self.request_alias_sync()
 
     @callback
-    def unregister(self, entry_id: str) -> None:
-        """Remove one unloaded bridge runtime."""
-        self.runtimes.pop(entry_id, None)
+    def _alias_bridge_status_changed(self, event: Event) -> None:
+        """Retry aliases when an ESPHome bridge becomes usable."""
+        old_state = event.data.get("old_state")
+        new_state = event.data.get("new_state")
+        old_usable = old_state is not None and parse_status(old_state.state) is not None
+        new_usable = new_state is not None and parse_status(new_state.state) is not None
+        if new_usable and not old_usable:
+            self.request_alias_sync()
+
+    @callback
+    def request_alias_sync(self) -> None:
+        """Request one deduplicated installation-wide alias synchronization."""
+        self._alias_sync_requested = True
+        if self._alias_sync_task is not None and not self._alias_sync_task.done():
+            return
+        self._alias_sync_task = self.hass.async_create_task(
+            self._async_alias_sync_worker(),
+            "synchronize global Somfy IO group remote aliases",
+        )
+
+    async def _async_alias_sync_worker(self) -> None:
+        """Synchronize aliases with bounded retry while bridges become ready."""
+        retry = 0
+        targets: set[str] | None = None
+        try:
+            while self._alias_sync_requested:
+                self._alias_sync_requested = False
+                pending = await self.async_sync_remote_aliases(targets)
+                if not pending:
+                    retry = 0
+                    targets = None
+                    continue
+                if retry >= len(ALIAS_SYNC_RETRY_DELAYS):
+                    names = {
+                        runtime.device_name
+                        for entry_id in pending
+                        if (runtime := self.runtimes.get(entry_id)) is not None
+                    }
+                    _LOGGER.warning(
+                        "Somfy group remote aliases remain pending for: %s; "
+                        "will retry when a bridge reconnects",
+                        ", ".join(sorted(names)),
+                    )
+                    return
+                delay = ALIAS_SYNC_RETRY_DELAYS[retry]
+                retry += 1
+                await asyncio.sleep(delay)
+                if self._alias_sync_requested:
+                    retry = 0
+                    targets = None
+                else:
+                    targets = pending
+                    self._alias_sync_requested = True
+        finally:
+            self._alias_sync_task = None
+            if self._alias_sync_requested and self.runtimes:
+                self.request_alias_sync()
 
     def runtime_for(self, entry_id: str | None) -> Any | None:
         """Return a loaded bridge by config-entry ID."""
@@ -494,8 +579,10 @@ class SomfyIOMultiBridgeCoordinator:
 
         return remove
 
-    async def async_sync_remote_aliases(self) -> None:
-        """Project global group mappings into every owning bridge's slots."""
+    async def async_sync_remote_aliases(
+        self, target_entry_ids: set[str] | None = None
+    ) -> set[str]:
+        """Project aliases to usable bridges and return bridges still pending."""
         aliases: dict[str, set[str]] = defaultdict(set)
         for runtime in self.runtimes.values():
             for alias in runtime.entry.options.get(CONF_REMOTE_ALIASES, []):
@@ -505,7 +592,13 @@ class SomfyIOMultiBridgeCoordinator:
                 aliases[remote].update(
                     str(item) for item in alias.get(CONF_SHUTTER_IDS, [])
                 )
-        for runtime in tuple(self.runtimes.values()):
+        pending: set[str] = set()
+        for entry_id, runtime in tuple(self.runtimes.items()):
+            if target_entry_ids is not None and entry_id not in target_entry_ids:
+                continue
+            if not runtime.available:
+                pending.add(entry_id)
+                continue
             local = {
                 str(shutter[CONF_SHUTTER_ID]): int(shutter[CONF_SLOT])
                 for owner, shutter in self.active_shutters()
@@ -519,10 +612,12 @@ class SomfyIOMultiBridgeCoordinator:
             try:
                 await runtime.async_sync_remote_alias_map(mapping)
             except ManagerError:
+                pending.add(entry_id)
                 _LOGGER.warning(
                     "Could not synchronize global remote aliases to %s",
                     runtime.device_name,
                 )
+        return pending
 
     async def async_remove_remote_alias(self, remote: str) -> None:
         """Remove one passive alias projection wherever it currently exists."""

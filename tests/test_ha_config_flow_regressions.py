@@ -346,7 +346,44 @@ def test_group_aliases_are_reapplied_after_bridge_replacement():
     assert "async_sync_remote_aliases" in RUNTIME_SOURCE
     assert '"action": "set"' in RUNTIME_SOURCE
     assert "CONF_SHUTTER_ID" in RUNTIME_SOURCE
-    assert "_async_sync_remote_aliases(coordinator)" in init_source
+    assert "coordinator.register(runtime)" in init_source
+    assert "self.request_alias_sync()" in COORDINATOR_SOURCE
+
+
+def test_group_alias_startup_sync_is_serialized_retryable_and_unload_safe():
+    init_source = (INTEGRATION_ROOT / "__init__.py").read_text()
+    worker = COORDINATOR_SOURCE.split("async def _async_alias_sync_worker", 1)[1]
+    worker = worker.split("def runtime_for", 1)[0]
+
+    assert "hass.async_create_task(\n        _async_sync_remote_aliases" not in init_source
+    assert "ALIAS_SYNC_RETRY_DELAYS" in COORDINATOR_SOURCE
+    assert "if not runtime.available" in COORDINATOR_SOURCE
+    assert "async_track_state_change_event" in COORDINATOR_SOURCE
+    assert "if new_usable and not old_usable" in COORDINATOR_SOURCE
+    assert "task.cancel()" in COORDINATOR_SOURCE
+    assert "await coordinator.async_unregister(entry.entry_id)" in init_source
+    unload = init_source.split("async def async_unload_entry", 1)[1]
+    unload = unload.split("async def _async_reload_entry", 1)[0]
+    assert unload.index("await coordinator.async_unregister") < unload.index(
+        "await data[DATA_RUNTIME].async_unload()"
+    )
+    assert "await asyncio.sleep(delay)" in worker
+
+
+def test_esphome_connection_failures_use_manager_error_hierarchy():
+    assert "from homeassistant.exceptions import HomeAssistantError" in RUNTIME_SOURCE
+    service_call = RUNTIME_SOURCE.split("await self.hass.services.async_call", 1)[1]
+    service_call = service_call.split("if status.get", 1)[0]
+    assert "except HomeAssistantError as err:" in service_call
+    assert "raise ManagerUnavailable" in service_call
+
+
+def test_obsolete_bridge_lookup_is_scoped_to_its_config_entry():
+    init_source = (INTEGRATION_ROOT / "__init__.py").read_text()
+    function = init_source.split("def _remove_obsolete_bridge_device", 1)[1]
+    function = function.split("def _reconcile_transports", 1)[0]
+    assert "dr.async_entries_for_config_entry(registry, entry.entry_id)" in function
+    assert "registry.async_get_device" not in function
 
 
 def test_config_entry_v4_adds_bridge_ownership_without_changing_identity():

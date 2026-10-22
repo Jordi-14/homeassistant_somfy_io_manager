@@ -91,10 +91,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     hass.async_create_task(
-        _async_sync_remote_aliases(coordinator),
-        "restore global Somfy IO group remote aliases",
-    )
-    hass.async_create_task(
         _async_hydrate_remote_metadata(runtime),
         "recover missing Somfy IO physical remote identities",
     )
@@ -110,30 +106,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
     data = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
-    if data is not None:
-        await data[DATA_RUNTIME].async_unload()
     coordinator = hass.data.get(DOMAIN, {}).get(DATA_COORDINATOR)
     if isinstance(coordinator, SomfyIOMultiBridgeCoordinator):
-        coordinator.unregister(entry.entry_id)
+        await coordinator.async_unregister(entry.entry_id)
+    if data is not None:
+        await data[DATA_RUNTIME].async_unload()
     return True
 
 
 async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload per-shutter entities after the GUI changes metadata."""
     await hass.config_entries.async_reload(entry.entry_id)
-
-
-async def _async_sync_remote_aliases(
-    coordinator: SomfyIOMultiBridgeCoordinator,
-) -> None:
-    """Reapply HA's non-secret group mappings after bridge replacement."""
-    try:
-        await coordinator.async_sync_remote_aliases()
-    except ManagerError:
-        _LOGGER.warning(
-            "Could not synchronize Somfy group remote aliases; will retry on "
-            "the next integration reload"
-        )
 
 
 async def _async_hydrate_remote_metadata(runtime: SomfyIOManagerRuntime) -> None:
@@ -193,10 +176,18 @@ async def _async_reconcile_bridge_transfers(
 def _remove_obsolete_bridge_device(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Remove the former empty manager hub; ESPHome remains the bridge device."""
     registry = dr.async_get(hass)
-    bridge = registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    devices = list(dr.async_entries_for_config_entry(registry, entry.entry_id))
+    bridge = next(
+        (
+            device
+            for device in devices
+            if (DOMAIN, entry.entry_id) in device.identifiers
+        ),
+        None,
+    )
     if bridge is None:
         return
-    for device in dr.async_entries_for_config_entry(registry, entry.entry_id):
+    for device in devices:
         if device.id != bridge.id and device.via_device_id == bridge.id:
             registry.async_update_device(device.id, via_device_id=None)
     registry.async_remove_device(bridge.id)

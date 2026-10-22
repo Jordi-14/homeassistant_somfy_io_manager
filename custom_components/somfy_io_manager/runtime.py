@@ -10,6 +10,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
 
@@ -367,6 +368,10 @@ class SomfyIOManagerRuntime:
             ):
                 future.set_result(current)
             status = await asyncio.wait_for(future, timeout)
+        except HomeAssistantError as err:
+            raise ManagerUnavailable(
+                f"ESPHome manager action {service} is unavailable"
+            ) from err
         except TimeoutError as err:
             raise ManagerUnavailable("manager status response timed out") from err
         finally:

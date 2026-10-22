@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.8.1
+
+- Serialize and deduplicate installation-wide physical group-remote alias
+  restoration instead of launching one competing startup task per bridge.
+- Wait for an authenticated, usable ESPHome manager status before restoring
+  aliases; retry transient failures with bounded backoff and retry again when
+  an offline bridge reconnects.
+- Cancel alias listeners and in-flight synchronization safely when a bridge is
+  unloaded, preventing tasks from retaining an obsolete runtime.
+- Translate ESPHome service connection failures into the integration's
+  `ManagerUnavailable` error so expected startup races no longer produce
+  unhandled task exceptions.
+- Replace the deprecated global device-identifier lookup with a config-entry-
+  scoped lookup compatible with future Home Assistant releases.
+
 ## 0.8.0
 
 - Coordinate multiple ESPHome radio bridges as one Somfy IO installation,
