@@ -76,8 +76,16 @@ def remove_shutter_registry_rows(
         if str(entity.unique_id).startswith(prefix):
             entity_registry.async_remove(entity.entity_id)
     device_registry = dr.async_get(hass)
-    device = device_registry.async_get_device(
-        identifiers={shutter_device_identifier(entry, shutter)}
+    identifier = shutter_device_identifier(entry, shutter)
+    device = next(
+        (
+            candidate
+            for candidate in dr.async_entries_for_config_entry(
+                device_registry, entry.entry_id
+            )
+            if identifier in candidate.identifiers
+        ),
+        None,
     )
     if device is not None:
         device_registry.async_remove_device(device.id)

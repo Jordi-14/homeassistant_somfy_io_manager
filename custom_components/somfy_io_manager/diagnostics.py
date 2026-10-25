@@ -134,15 +134,16 @@ async def _async_receive_pipeline(
         "valid": ("crc_valid_frames", int),
         "accepted": ("accepted_remote_commands", int),
         "last_rssi": ("last_valid_rssi", float),
+        "raw_rssi": ("last_raw_rssi", float),
+        "freq_offset": ("last_frequency_offset", float),
     }
-    for item in str(status.get("detail") or "").split(","):
-        key, separator, value = item.partition("=")
-        if not separator or key not in fields:
+    for source_key, (output_key, converter) in fields.items():
+        value = status.get(source_key)
+        if value is None or isinstance(value, bool):
             continue
-        output_key, converter = fields[key]
         try:
             result[output_key] = converter(value)
-        except ValueError:
+        except (TypeError, ValueError):
             continue
     return result
 

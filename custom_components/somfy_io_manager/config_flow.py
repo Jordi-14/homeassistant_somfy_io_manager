@@ -41,6 +41,7 @@ from .const import (
     DATA_COORDINATOR,
     DATA_RUNTIME,
     DOMAIN,
+    MANAGER_CAP_PAIR_RETRY,
     MAX_SHUTTER_SLOTS,
     STATE_ACTIVE,
     STATE_UNCERTAIN,
@@ -1027,7 +1028,7 @@ class SomfyOptionsFlow(config_entries.OptionsFlowWithConfigEntry):
                 if resume_action == ACTION_RETRY:
                     if state != "pair_sent":
                         raise FlowError("attempt_not_retryable")
-                    if status.get("pair_retry") is not True:
+                    if not self._runtime.has_capability(MANAGER_CAP_PAIR_RETRY):
                         raise FlowError("firmware_retry_unavailable")
                     return await self.async_step_retry_pairing()
                 if state == "staged":

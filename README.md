@@ -84,10 +84,10 @@ The project is deliberately split into two repositories:
 
 | Layer | Repository | Responsibility |
 | --- | --- | --- |
-| ESPHome | [`Jordi-14/esphome_somfy`](https://github.com/Jordi-14/esphome_somfy/tree/iohc-venetian-tilt-discovery) | Radio framing, receive/transmit, rolling codes, NVS identities, slot state, position timing, encrypted export, and manager API. |
+| ESPHome | [`Jordi-14/esphome_somfy`](https://github.com/Jordi-14/esphome_somfy/tree/v0.8.2) | Radio framing, receive/transmit, rolling codes, NVS identities, slot state, position timing, encrypted export, and manager API. |
 | Home Assistant | This repository | Config and options flows, per-shutter devices and entities, diagnostics, encrypted-snapshot retention, and safe slot workflows. |
 
-The firmware work is proposed upstream in
+The original hardware-control work was merged upstream in
 [`leonardpitzu/esphome_somfy#9`](https://github.com/leonardpitzu/esphome_somfy/pull/9).
 HACS default-catalog inclusion is tracked in
 [`hacs/default#10085`](https://github.com/hacs/default/pull/10085).
@@ -144,7 +144,7 @@ api:
   custom_services: true
 
 external_components:
-  - source: github://Jordi-14/esphome_somfy@e0b0e48c72605068033854643151c6ec2813d2b2
+  - source: github://Jordi-14/esphome_somfy@v0.8.2
     components: [somfy, somfy_iohc_manager]
 
 text_sensor:
@@ -176,7 +176,7 @@ use the same `somfy_io_backup_key`; the firmware uses it as the default relay
 key without exposing it to Home Assistant.
 
 Flash the firmware, add its ESPHome device to Home Assistant, and confirm the
-commissioning status entity reports manager API version 1 before adding this
+commissioning status entity reports manager API version 2 before adding this
 integration.
 
 ## Quick setup
