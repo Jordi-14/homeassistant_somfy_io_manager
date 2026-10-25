@@ -58,7 +58,7 @@ def test_bridge_discovery_accepts_current_and_legacy_sensor_domains():
 
 def test_manager_status_requires_the_documented_api_version():
     constants = (INTEGRATION_ROOT / "const.py").read_text()
-    assert "MANAGER_API_VERSION = 1" in constants
+    assert "MANAGER_API_VERSION = 2" in constants
     assert 'status.get("v") != MANAGER_API_VERSION' in RUNTIME_SOURCE
 
 
@@ -86,7 +86,7 @@ def test_uncertain_pairing_retry_reuses_the_preserved_firmware_identity():
 
     assert "ACTION_RETRY" in resume
     assert 'state != "pair_sent"' in resume
-    assert 'status.get("pair_retry") is not True' in resume
+    assert "self._runtime.has_capability(MANAGER_CAP_PAIR_RETRY)" in resume
     assert '"action": "retry_arm"' in retry
     assert '"action": "pair"' in retry
     assert "CONF_RETRY_CONTROLLER_FAILED" in retry
@@ -383,6 +383,20 @@ def test_obsolete_bridge_lookup_is_scoped_to_its_config_entry():
     function = function.split("def _wait_for_transport_covers", 1)[0]
     assert "dr.async_entries_for_config_entry(registry, entry.entry_id)" in function
     assert "registry.async_get_device" not in function
+
+
+def test_transferred_shutter_cleanup_uses_entry_scoped_device_lookup():
+    source = (INTEGRATION_ROOT / "entity.py").read_text()
+    function = source.split("def remove_shutter_registry_rows", 1)[1]
+    assert "dr.async_entries_for_config_entry(" in function
+    assert "entry.entry_id" in function
+    assert "device_registry.async_get_device" not in function
+
+
+def test_alias_recovery_logs_success_after_reconnection():
+    assert "Somfy group remote aliases synchronized across %d bridge(s)" in (
+        COORDINATOR_SOURCE
+    )
 
 
 def test_config_entry_v4_adds_bridge_ownership_without_changing_identity():

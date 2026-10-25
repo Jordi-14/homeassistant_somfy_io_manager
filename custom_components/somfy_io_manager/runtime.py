@@ -28,6 +28,7 @@ from .const import (
     CONF_STATUS_ENTITY_ID,
     DOMAIN,
     MANAGER_API_VERSION,
+    MANAGER_CAP_MULTI_BRIDGE,
     STATE_ACTIVE,
     STATE_UNCERTAIN,
     STORAGE_VERSION,
@@ -105,7 +106,7 @@ class SomfyIOManagerRuntime:
         self._pending: dict[str, dict[str, Any]] = {}
         self._pending_transfer: dict[str, Any] | None = None
         self._synced_aliases: set[str] = set()
-        self._multi_bridge_caps = 0
+        self._manager_caps = 0
         self._remove_listener = None
         self._service_lock = asyncio.Lock()
 
@@ -274,14 +275,21 @@ class SomfyIOManagerRuntime:
     @property
     def multi_bridge_capable(self) -> bool:
         """Return whether this node advertised the additive multi-bridge API."""
-        return self._multi_bridge_caps == 0x0F or all(
+        return (
+            self._manager_caps & MANAGER_CAP_MULTI_BRIDGE
+            == MANAGER_CAP_MULTI_BRIDGE
+        ) or all(
             self.has_service(suffix)
             for suffix in ("redundant_control", "relay", "observe", "transfer")
         )
 
+    def has_capability(self, capability: int) -> bool:
+        """Check one advertised manager capability bit."""
+        return self._manager_caps & capability == capability
+
     def has_multi_bridge_capability(self, capability: int) -> bool:
         """Check one advertised capability bit, with service discovery fallback."""
-        if self._multi_bridge_caps & capability == capability:
+        if self.has_capability(capability):
             return True
         inferred = {
             0x02: ("observe",),
@@ -292,11 +300,11 @@ class SomfyIOManagerRuntime:
 
     @callback
     def _remember_capabilities(self, status: dict[str, Any] | None) -> None:
-        if status is None or status.get("multi_bridge") is not True:
+        if status is None:
             return
-        caps = status.get("mb_caps")
+        caps = status.get("caps")
         if isinstance(caps, int) and not isinstance(caps, bool):
-            self._multi_bridge_caps = max(0, caps)
+            self._manager_caps = max(0, caps)
 
     async def async_call(
         self,

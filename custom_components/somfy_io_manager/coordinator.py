@@ -154,6 +154,10 @@ class SomfyIOMultiBridgeCoordinator:
                 self._alias_sync_requested = False
                 pending = await self.async_sync_remote_aliases(targets)
                 if not pending:
+                    _LOGGER.info(
+                        "Somfy group remote aliases synchronized across %d bridge(s)",
+                        len(self.runtimes),
+                    )
                     retry = 0
                     targets = None
                     continue

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.2
+
+- Require manager API v2 and consume its compact capability bitmask and bounded
+  structured receiver diagnostics.
+- Parse `rx_stats` numeric fields directly, including raw RSSI and frequency
+  offset, instead of decoding a verbose comma-separated detail string.
+- Replace the last deprecated global device-identifier lookup with a
+  config-entry-scoped lookup used during controller ownership transfers.
+- Log successful installation-wide physical group-remote alias synchronization
+  so reconnection recovery can be confirmed from Home Assistant logs.
+
 ## 0.8.1
 
 - Serialize and deduplicate installation-wide physical group-remote alias

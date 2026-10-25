@@ -33,6 +33,7 @@ from custom_components.somfy_io_manager.coordinator import (
     SomfyIOMultiBridgeCoordinator,
 )
 from custom_components.somfy_io_manager.cover import SomfyManagedCover
+from custom_components.somfy_io_manager.diagnostics import _async_receive_pipeline
 from custom_components.somfy_io_manager.entity import (
     initialize_shutter_device,
 )
@@ -43,6 +44,7 @@ from custom_components.somfy_io_manager.runtime import (
     ManagerRejected,
     ManagerUnavailable,
     SomfyIOManagerRuntime,
+    parse_status,
 )
 from custom_components.somfy_io_manager.sensor import SomfyRemoteSensor
 
@@ -105,6 +107,15 @@ def _runtime(hass, entry):
     runtime = SomfyIOManagerRuntime(hass, entry, coordinator)
     coordinator.runtimes[entry.entry_id] = runtime
     return runtime
+
+
+def test_manager_contract_requires_api_v2():
+    assert parse_status('{"v":1,"action":"ready"}') is None
+    assert parse_status('{"v":2,"caps":31,"action":"ready"}') == {
+        "v": 2,
+        "caps": 31,
+        "action": "ready",
+    }
 
 
 async def test_startup_and_reload_preserve_esphome_entities(hass, monkeypatch):
@@ -357,7 +368,7 @@ async def test_rejected_command_keeps_its_detail_and_translation(hass):
             runtime.status_entity_id,
             json.dumps(
                 {
-                    "v": 1,
+                    "v": 2,
                     "event": 1,
                     "slot": 0,
                     "action": "error",
@@ -419,3 +430,32 @@ async def test_alias_retry_targets_only_the_pending_bridge(hass):
     assert await coordinator.async_sync_remote_aliases({"offline"}) == set()
     online.async_sync_remote_alias_map.assert_awaited_once()
     offline.async_sync_remote_alias_map.assert_awaited_once_with({})
+
+
+async def test_api_v2_structured_rx_stats_feed_anonymous_diagnostics():
+    runtime = SimpleNamespace(
+        async_call=AsyncMock(
+            return_value={
+                "v": 2,
+                "caps": 31,
+                "action": "rx_stats",
+                "slot": 0,
+                "raw": 4294967295,
+                "valid": 123,
+                "accepted": 45,
+                "last_rssi": -54.5,
+                "raw_rssi": -109.0,
+                "freq_offset": -25391.0,
+            }
+        )
+    )
+
+    assert await _async_receive_pipeline(runtime) == {
+        "available": True,
+        "raw_packets": 4294967295,
+        "crc_valid_frames": 123,
+        "accepted_remote_commands": 45,
+        "last_valid_rssi": -54.5,
+        "last_raw_rssi": -109.0,
+        "last_frequency_offset": -25391.0,
+    }

@@ -138,19 +138,19 @@ def test_remote_normalization_rejects_malformed_private_ids() -> None:
 
 
 def test_consecutive_compact_relay_offers_without_event_are_new() -> None:
-    before = '{"v":1,"action":"relay_offer","relay_envelope":"first"}'
-    after = '{"v":1,"action":"relay_offer","relay_envelope":"second"}'
+    before = '{"v":2,"action":"relay_offer","relay_envelope":"first"}'
+    after = '{"v":2,"action":"relay_offer","relay_envelope":"second"}'
     assert status_response_is_new(
         before,
         None,
         after,
-        {"v": 1, "action": "relay_offer", "relay_envelope": "second"},
+        {"v": 2, "action": "relay_offer", "relay_envelope": "second"},
     )
     assert not status_response_is_new(
         after,
         None,
         after,
-        {"v": 1, "action": "relay_offer", "relay_envelope": "second"},
+        {"v": 2, "action": "relay_offer", "relay_envelope": "second"},
     )
 
 
