@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.0b1
+
+- Experimentally extend secondary-bridge diversity to native MY without
+  requiring either bridge to hear the other over RF.
+- Relay the exact four authenticated primary frames over the encrypted manager
+  channel in strict STOP, extended EXECUTE, press and release order.
+- Keep all rolling-code generation and persistence on the primary; the
+  secondary only retransmits exact envelopes and never owns controller state.
+- Fall back to completing the remaining primary sequence if secondary diversity
+  fails partway through the transaction.
+
 ## 0.8.2
 
 - Require manager API v2 and consume its compact capability bitmask and bounded

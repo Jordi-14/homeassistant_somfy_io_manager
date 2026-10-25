@@ -457,12 +457,24 @@ def test_legacy_missing_remote_is_privately_hydrated_from_owner_slot():
     assert "remote," not in hydrate
 
 
-def test_exact_frame_relay_uses_one_shot_token_and_never_relays_my_or_tilt():
+def test_exact_frame_relay_keeps_ordinary_commands_one_shot():
     assert '{"action": "arm", "payload": ""}' in COORDINATOR_SOURCE
     assert '"relay_token": token' in COORDINATOR_SOURCE
     assert '{"action": "send", "payload": envelope}' in COORDINATOR_SOURCE
     assert '{"action": "cancel", "payload": token}' in COORDINATOR_SOURCE
     assert "relay_allowed(command)" in COORDINATOR_SOURCE
+
+
+def test_redundant_my_relays_four_encrypted_frames_without_rf_bridge_overlap():
+    function = COORDINATOR_SOURCE.split("async def _async_redundant_my", 1)[1]
+    function = function.split("async def _async_primary_control", 1)[0]
+    assert '{"action": "arm_my", "payload": ""}' in function
+    assert "for step in range(4):" in function
+    assert 'command = "my" if step == 0 else f"my_{step}"' in function
+    assert '"action": "send" if final else "send_more"' in function
+    assert '"relay_my_complete" if final else "relay_sent"' in function
+    assert "MANAGER_CAP_MY_DIVERSITY" in COORDINATOR_SOURCE
+    assert "relay_envelope" in function
 
 
 def test_transfer_contract_and_order_preserve_single_owner():

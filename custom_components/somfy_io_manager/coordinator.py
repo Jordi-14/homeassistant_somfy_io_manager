@@ -23,6 +23,7 @@ from .const import (
     CONF_SHUTTERS,
     CONF_SLOT,
     CONF_STATE,
+    MANAGER_CAP_MY_DIVERSITY,
     OBSERVATION_COMMANDS,
     STATE_ACTIVE,
 )
@@ -275,6 +276,17 @@ class SomfyIOMultiBridgeCoordinator:
             secondary_id if isinstance(secondary_id, str) else None
         )
         if (
+            command == "my"
+            and secondary is not None
+            and secondary is not owner
+            and secondary.available
+            and owner.has_capability(MANAGER_CAP_MY_DIVERSITY)
+            and secondary.has_capability(MANAGER_CAP_MY_DIVERSITY)
+            and owner.has_service("redundant_control")
+            and secondary.has_service("relay")
+        ):
+            return await self._async_redundant_my(owner, secondary, slot)
+        if (
             not relay_allowed(command)
             or secondary is None
             or secondary is owner
@@ -340,6 +352,73 @@ class SomfyIOMultiBridgeCoordinator:
         else:
             self._relay_successes += 1
         return offered
+
+    async def _async_redundant_my(
+        self, owner: Any, secondary: Any, slot: int
+    ) -> dict[str, Any]:
+        """Relay the four exact authenticated MY frames in strict order."""
+        self._relay_attempts += 1
+        try:
+            armed = await secondary.async_call(
+                "relay",
+                {"action": "arm_my", "payload": ""},
+                "relay_armed",
+                timeout=5.0,
+            )
+            token = str(armed.get("relay_token") or "")
+            if not token:
+                raise ManagerUnavailable("secondary returned no MY relay token")
+        except ManagerError:
+            self._relay_failures += 1
+            return await self._async_primary_control(owner, slot, "my", 0.0)
+
+        last_offer: dict[str, Any] = armed
+        primary_sent_step = -1
+        try:
+            for step in range(4):
+                command = "my" if step == 0 else f"my_{step}"
+                last_offer = await owner.async_call(
+                    "redundant_control",
+                    {"slot": slot, "command": command, "relay_token": token},
+                    "relay_offer",
+                    timeout=10.0,
+                )
+                primary_sent_step = step
+                envelope = str(last_offer.get("relay_envelope") or "")
+                if not envelope:
+                    raise ManagerUnavailable("primary supplied no MY relay envelope")
+                final = step == 3
+                relayed = await secondary.async_call(
+                    "relay",
+                    {
+                        "action": "send" if final else "send_more",
+                        "payload": envelope,
+                    },
+                    "relay_my_complete" if final else "relay_sent",
+                    timeout=10.0,
+                )
+                if relayed.get("detail") != f"step_{step}":
+                    raise ManagerUnavailable("secondary MY relay step mismatch")
+        except ManagerError:
+            self._relay_failures += 1
+            await self._async_cancel_relay(secondary, token)
+            for remaining in range(primary_sent_step + 1, 4):
+                command = "my" if remaining == 0 else f"my_{remaining}"
+                try:
+                    last_offer = await owner.async_call(
+                        "redundant_control",
+                        {"slot": slot, "command": command, "relay_token": token},
+                        "relay_offer",
+                        timeout=10.0,
+                    )
+                except ManagerError:
+                    break
+            _LOGGER.warning(
+                "MY continued on the primary, but exact-frame diversity stopped early"
+            )
+        else:
+            self._relay_successes += 1
+        return last_offer
 
     async def _async_primary_control(
         self, owner: Any, slot: int, command: str, position: float
