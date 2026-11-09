@@ -19,7 +19,7 @@ body:
         - Open, close, stop, MY, or position control is wrong
         - Physical-remote detection or synchronization is wrong
         - Slot import, move, swap, calibration, or recovery fails
-        - HACS, upgrade, or duplicate-entity problem
+        - Marketplace / HACS, upgrade, or duplicate-entity problem
         - Other support request
     validations:
       required: true

@@ -25,7 +25,7 @@ Stable releases use semantic version tags such as `v0.6.1`.
 5. Confirm the ZIP contains the integration files at archive root and does not
    contain tests, examples, caches, local configuration, or repository
    metadata.
-6. Install the release through HACS on a non-critical Home Assistant instance,
+6. Install the release through the Marketplace (HACS on older HA) on a non-critical Home Assistant instance,
    restart, and verify setup plus one already-paired shutter before broad use.
 
 Do not publish a release that points to test-only firmware, unreleased manager

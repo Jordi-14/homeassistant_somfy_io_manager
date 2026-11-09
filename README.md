@@ -2,7 +2,7 @@
 
 [![Validation](https://github.com/Jordi-14/homeassistant_somfy_io_manager/actions/workflows/validate.yml/badge.svg)](https://github.com/Jordi-14/homeassistant_somfy_io_manager/actions/workflows/validate.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/Jordi-14/homeassistant_somfy_io_manager)](https://github.com/Jordi-14/homeassistant_somfy_io_manager/releases/latest)
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
+[![Marketplace Catalog](https://img.shields.io/badge/Marketplace-Catalog-41BDF5.svg)](https://github.com/hacs/default/pull/10085)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5?logo=homeassistant&logoColor=white)](https://www.home-assistant.io/)
 [![License](https://img.shields.io/github/license/Jordi-14/homeassistant_somfy_io_manager)](LICENSE)
 
@@ -89,13 +89,13 @@ The project is deliberately split into two repositories:
 
 The original hardware-control work was merged upstream in
 [`leonardpitzu/esphome_somfy#9`](https://github.com/leonardpitzu/esphome_somfy/pull/9).
-HACS default-catalog inclusion is tracked in
+Marketplace catalog inclusion was merged in
 [`hacs/default#10085`](https://github.com/hacs/default/pull/10085).
 
 ## Requirements
 
 - Home Assistant 2026.7 or newer;
-- HACS, or manual custom-component installation;
+- Marketplace (HA 2026.11+), HACS on older supported HA, or manual installation;
 - an ESP32 running the compatible manager firmware;
 - a CC1101 radio suitable for the local io-homecontrol frequency;
 - an existing physical remote for each shutter being commissioned;
@@ -107,19 +107,20 @@ Keep the original remote and motor instructions available.
 
 ## Installation
 
-### HACS
+### Marketplace / HACS
 
-Until the repository is merged into the default HACS catalogue:
+Home Assistant 2026.11 and later include the **Marketplace** under **Settings > Marketplace**. It replaces HACS and carries over existing installations automatically. On older supported Home Assistant versions, continue using HACS. See the [Marketplace documentation](https://www.home-assistant.io/integrations/marketplace/).
 
-1. Open **HACS → Integrations**.
-2. Open the three-dot menu and choose **Custom repositories**.
-3. Add `https://github.com/Jordi-14/homeassistant_somfy_io_manager` as an
-   **Integration**.
-4. Search for **Somfy IO Shutter Manager** and select **Download**.
-5. Restart Home Assistant.
+Somfy IO Shutter Manager is included in the shared catalog:
 
-After default-catalog inclusion, the custom repository step will no longer be
-needed.
+1. On HA 2026.11+, open **Settings > Marketplace**. On older supported HA,
+   open **HACS > Integrations**.
+2. Search for **Somfy IO Shutter Manager** and confirm the repository is
+   `Jordi-14/homeassistant_somfy_io_manager`.
+3. Select **Install** (**Download** in older HACS), then restart Home Assistant.
+
+No custom repository is needed. If the catalog has not refreshed yet, allow it
+to refresh and try again.
 
 ### Manual
 
